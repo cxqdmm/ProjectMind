@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ProjectMind Chat</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header>
+    <div class="container">
+      <h1>ProjectMind 智能体（最小骨架）</h1>
+      <p class="subtitle">支持产品咨询与客诉常见问题的简单问答</p>
+    </div>
+  </header>
+  <main class="container">
+    <div id="messages" class="messages"></div>
+    <form id="input-form" class="input-row">
+      <input id="user-input" type="text" placeholder="例如：ProjectMind Pro 的价格？或 如何申请退款？" autocomplete="off" />
+      <button type="submit">发送</button>
+    </form>
+    <p class="tip">本页为演示用最小骨架，不连接真实模型与向量库。</p>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>

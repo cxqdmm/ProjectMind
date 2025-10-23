@@ -1,0 +1,15 @@
+# Node
+node_modules/
+frontend/node_modules/
+
+# Build outputs
+dist/
+frontend/dist/
+.vite/
+
+# Env & system
+.env
+.DS_Store
+
+# IDE
+.vscode/
