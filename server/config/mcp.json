@@ -59,7 +59,7 @@
           "inputSchema": {
             "type": "object",
             "properties": {
-              "operation": { "type": "string", "enum": ["变更开放期", "中小微保全加人的配置步骤", "配置计划与档次"], "description": "操作主题（枚举）" },
+              "operation": { "type": "string", "enum": ["变更开放期", "中小微保全加人的配置步骤","员福保全加人的配置步骤", "配置计划与档次"], "description": "操作主题（枚举）" },
               "policyId": { "type": "string", "description": "保单号，可选" }
             },
             "additionalProperties": false
