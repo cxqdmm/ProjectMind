@@ -38,7 +38,9 @@ export async function invokeMCPTool(providerName, tool, input) {
   if (!provider) {
     return { ok: false, error: `Provider not found: ${providerName}` };
   }
+  // 添加入参日志，便于排查调用问题
   try {
+    console.log(`[mcp/client] 调用工具 provider=${providerName} tool=${tool} 入参=${JSON.stringify(input)}`);
     if ((provider.type || 'http') === 'http') {
       const res = await invokeHTTP(provider, tool, input);
       return { ok: true, provider: providerName, tool, result: res?.result ?? res };

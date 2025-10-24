@@ -21,6 +21,54 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
+app.post('/mcp/invoke', async (req, res) => {
+  const id = 5;
+  const tool = String(req.body?.tool || '').trim();
+  const input = req.body?.input || {};
+  console.log(`[mcp/invoke][start] id=${id} tool=${tool} inputLen=${JSON.stringify(input).length}`);
+  try {
+    switch (tool) {
+      case 'policy.basic_info': {
+        const policyId = input.policyId || input.policy_id || 'POLICY-001';
+        const mock = {
+          ok: true,
+          data: {
+            policyId,
+            effectiveDate: '2024-08-01',
+            expiryDate: '2025-08-01',
+            insuredAmount: '¥500,000',
+            diseaseScope: '重大疾病（含癌症、心脑血管）',
+          }
+        };
+        console.log(`[mcp/invoke][done] id=${id} tool=${tool} ok=true`);
+        return res.json(mock);
+      }
+      case 'policy.health_rules': {
+        const policyId = input.policyId || input.policy_id || 'POLICY-001';
+        const mock = {
+          ok: true,
+          data: {
+            policyId,
+            rules: [
+              '投保前一年内住院史需如实告知',
+              '既往慢性病（如高血压、糖尿病）需补充治疗情况',
+              '近期重大检查异常（如肿瘤标志物升高）需说明',
+            ],
+          }
+        };
+        console.log(`[mcp/invoke][done] id=${id} tool=${tool} ok=true`);
+        return res.json(mock);
+      }
+      default: {
+        console.warn(`[mcp/invoke][warn] id=${id} unknown tool: ${tool}`);
+        return res.json({ ok: false, error: `未知工具: ${tool}` });
+      }
+    }
+  } catch (err) {
+    console.error(`[mcp/invoke][error] id=${id} tool=${tool} err=`, err);
+    return res.status(500).json({ ok: false, error: '服务异常' });
+  }
+});
 app.post('/api/chat', async (req, res) => {
   const userText = req.body?.message || '';
   const sessionId = req.body?.sessionId || req.ip || 'default';

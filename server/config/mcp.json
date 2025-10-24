@@ -1,16 +1,59 @@
 {
   "providers": {
-    "web": {
+    "policy": {
       "type": "http",
-      "baseURL": "http://localhost:3324",
-      "invokePath": "/invoke",
-      "token": ""
-    },
-    "kb": {
-      "type": "http",
-      "baseURL": "http://localhost:3325",
-      "invokePath": "/invoke",
-      "token": ""
+      "baseURL": "http://localhost:3000",
+      "invokePath": "/mcp/invoke",
+      "token": "",
+      "tools": [
+        {
+          "name": "policy.basic_info",
+          "description": "获取保单的基本信息（保险生效时间、投保金额、适用疾病范围等）",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "policyId": { "type": "string", "description": "保单号，可选" }
+            },
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "policyId": { "type": "string" },
+              "effectiveDate": { "type": "string", "description": "ISO 日期字符串" },
+              "expiryDate": { "type": "string", "description": "ISO 日期字符串（到期时间）" },
+              "insuredAmount": { "type": "string", "description": "金额字符串，如 ¥500,000" },
+              "diseaseScope": { "type": "string", "description": "适用疾病范围说明" }
+            }
+          }
+        },
+        {
+          "name": "policy.health_rules",
+          "description": "查看保单的健告规则（需披露的疾病、等待期、免责条款提示等）",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "policyId": { "type": "string", "description": "保单号，可选" }
+            },
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "rules": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "title": { "type": "string" },
+                    "detail": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
     }
   }
 }
