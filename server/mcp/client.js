@@ -26,8 +26,16 @@ async function invokeHTTP(provider, tool, input) {
   const headers = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
   const body = { tool, input };
+  console.log(`[mcp/client] 调用工具请求 url=${url} tool=${tool} 入参=${JSON.stringify(body)}`);
   const resp = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
-  const data = await resp.json().catch(() => ({}));
+  let data;
+  try {
+    data = await resp.json();
+  } catch (e) {
+    const txt = await resp.text().catch(() => '');
+    console.warn(`[mcp/client] 响应非JSON status=${resp.status} ok=${resp.ok} textClip=${String(txt).slice(0,200)}`);
+    data = {};
+  }
   return data;
 }
 
@@ -40,10 +48,12 @@ export async function invokeMCPTool(providerName, tool, input) {
   }
   // 添加入参日志，便于排查调用问题
   try {
-    console.log(`[mcp/client] 调用工具 provider=${providerName} tool=${tool} 入参=${JSON.stringify(input)}`);
+    console.log(`[mcp/client] 调用工具 provider=${providerName} type=${provider.type || 'http'} tool=${tool} 入参=${JSON.stringify(input)}`);
     if ((provider.type || 'http') === 'http') {
       const res = await invokeHTTP(provider, tool, input);
-      return { ok: true, provider: providerName, tool, result: res?.result ?? res };
+      const pretty = res?.result ?? res?.data ?? res;
+      console.log(`[mcp/client] 工具返回结果 provider=${providerName} tool=${tool} 出参=${JSON.stringify(pretty)}`);
+      return { ok: true, provider: providerName, tool, result: res?.result ?? res?.data ?? res };
     }
     return { ok: false, error: `Unsupported provider type: ${provider.type}` };
   } catch (e) {

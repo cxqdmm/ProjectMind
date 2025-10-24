@@ -2,7 +2,7 @@
   "providers": {
     "policy": {
       "type": "http",
-      "baseURL": "http://localhost:3000",
+      "baseURL": "http://localhost:3100",
       "invokePath": "/mcp/invoke",
       "token": "",
       "tools": [
@@ -41,6 +41,33 @@
             "type": "object",
             "properties": {
               "rules": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "title": { "type": "string" },
+                    "detail": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "policy.operation_guide",
+          "description": "保险操作指南（如变更开放期、理赔、变更受益人等）",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "operation": { "type": "string", "enum": ["变更开放期", "中小微保全加人的配置步骤", "配置计划与档次"], "description": "操作主题（枚举）" },
+              "policyId": { "type": "string", "description": "保单号，可选" }
+            },
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "steps": {
                 "type": "array",
                 "items": {
                   "type": "object",

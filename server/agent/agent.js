@@ -107,6 +107,40 @@ function clip(s, n = 400) {
   return str.slice(0, n) + `…(${str.length}字符)`;
 }
 
+// 迭代推理与工具调用循环：每步先询问是否需要工具，若需要则调用并继续；否则结束
+async function reasoningLoop(client, model, baseMessages, maxSteps = 3) {
+  let messages = [...baseMessages];
+  let reply = '';
+  let toolCalls = 0;
+  for (let step = 1; step <= maxSteps; step++) {
+    const t = Date.now();
+    const completion = await client.chat.completions.create({ model, messages });
+    reply = String(completion?.choices?.[0]?.message?.content || '');
+    console.log(`[推理] step=${step} ms=${Date.now()-t} reply=${clip(reply)}`);
+    const call = parseToolCall(reply);
+    if (call) {
+      const inv = await invokeMCPTool(call.provider, call.tool, call.input);
+      const toolResult = inv?.result ?? inv;
+      console.log(`[推理] 工具结果预览：${clip(JSON.stringify(toolResult))}`);
+      messages = [
+        ...messages,
+        { role: 'assistant', content: reply },
+        { role: 'user', content: `工具(${call.provider}.${call.toolName})结果：${JSON.stringify(toolResult)}` }
+      ];
+      toolCalls++;
+      continue;
+    }
+    // 无工具调用，视为任务已可完成，结束循环
+    messages = [...messages, { role: 'assistant', content: reply }];
+    return { reply, messages, toolCalls, steps: step };
+  }
+  // 达到最大步数后仍未结束：请求最终回答
+  const completion = await client.chat.completions.create({ model, messages: [...messages, { role: 'user', content: '请根据已有信息给出最终简洁回答。' }] });
+  reply = String(completion?.choices?.[0]?.message?.content || '');
+  messages = [...messages, { role: 'assistant', content: reply }];
+  return { reply, messages, toolCalls, steps: maxSteps };
+}
+
 export async function runAgent(userInput, options = {}) {
   const sessionId = String(options?.sessionId || 'default');
   const intent = classifyIntent(userInput);
@@ -134,44 +168,26 @@ export async function runAgent(userInput, options = {}) {
     const history = sessionHistories.get(sessionId) || [];
     const tools = (payload.tools || []);
     const toolSystemMsg = buildToolSystemJSON(tools);
+    const sysReasoningMsg = "指令：采用逐步推理，每步判断是否需要工具（CALL/CALL_JSON）。当任务可完成时直接给出最终回答。";
     const messages = [
       { role: 'system', content: systemPrompt },
       { role: 'system', content: toolSystemMsg },
+      { role: 'system', content: sysReasoningMsg },
       ...history.map(m => ({ role: m.role, content: m.content })),
       { role: 'user', content: userInput }
     ];
-    console.log(messages);
+    console.log(`[推理] 输入消息`,messages);
+    const maxStepsRaw = (info && (info.reasoningMaxSteps ?? info.maxReasoningSteps)) ?? (cfg && cfg.reasoningMaxSteps) ?? process.env.PM_MAX_REASONING_STEPS;
+    const REASON_MAX_STEPS = Math.max(1, Math.min(8, Number(maxStepsRaw) || 3));
+    console.log(`[推理] 准备执行循环 steps=${REASON_MAX_STEPS}`);
     const client = new OpenAI({ apiKey, baseURL });
-    const t0 = Date.now();
-    let completion = await client.chat.completions.create({ model, messages });
-    let reply = String(completion?.choices?.[0]?.message?.content || '');
-    console.log(`[代理] 首次回复耗时=${Date.now() - t0}ms`);
-    console.log(`[代理] 首次回复内容：${reply}`)
-    console.log(`[代理] 工具调用：${clip(reply)}`);
+    const { reply, messages: finalMessages, toolCalls, steps } = await reasoningLoop(client, model, messages, REASON_MAX_STEPS);
+    console.log(`[推理] 完成循环 steps=${steps} toolCalls=${toolCalls} replyClip=${clip(reply)}`);
 
-    const call = parseToolCall(reply);
-    if (call) {
-      console.log(`[代理] 检测到工具调用：${call.provider}.${call.toolName}`);
-      console.log(`[代理] 工具输入：${JSON.stringify(call.input)}`);
-      const inv = await invokeMCPTool(call.provider, call.tool, call.input);
-      const toolResult = inv?.result ?? inv;
-      console.log(`[代理] 工具结果预览：${clip(JSON.stringify(toolResult))}`);
-      const messages2 = [
-        ...messages,
-        { role: 'assistant', content: reply },
-        { role: 'user', content: `工具(${call.provider}.${call.toolName})结果：${JSON.stringify(toolResult)}` }
-      ];
-      const t1 = Date.now();
-      completion = await client.chat.completions.create({ model, messages: messages2 });
-      reply = String(completion?.choices?.[0]?.message?.content || '');
-
-      console.log(`[代理] 最终回复耗时=${Date.now() - t1}ms`);
-      console.log(`[代理] 最终回复内容：${clip(reply)}`);
-    }
-
-    history.push({ role: 'user', content: userInput });
-    history.push({ role: 'assistant', content: reply });
-    const trimmed = history.slice(-MAX_TURNS * 2);
+    const baseLen = messages.length;
+    const newSegments = (finalMessages || []).slice(baseLen).filter(m => m.role === 'assistant' || m.role === 'user');
+    const updatedHistory = [...history, { role: 'user', content: userInput }, ...newSegments];
+    const trimmed = updatedHistory.slice(-MAX_TURNS * 2);
     sessionHistories.set(sessionId, trimmed);
     return { reply, citations: [] };
   } catch (e) {
@@ -201,13 +217,15 @@ function buildToolSystemJSON(tools) {
       name: k,
       type: (inputProps[k] && inputProps[k].type) || 'any',
       required: required.includes(k),
-      description: (inputProps[k] && inputProps[k].description) || ''
+      description: (inputProps[k] && inputProps[k].description) || '',
+      enum: Array.isArray(inputProps[k]?.enum) ? inputProps[k].enum : undefined
     }));
     const outProps = outputSchema.properties || {};
     const out = Object.keys(outProps).map(k => ({
       name: k,
       type: (outProps[k] && outProps[k].type) || 'any',
-      description: (outProps[k] && outProps[k].description) || ''
+      description: (outProps[k] && outProps[k].description) || '',
+      enum: Array.isArray(outProps[k]?.enum) ? outProps[k].enum : undefined
     }));
     return {
       name,
