@@ -22,6 +22,24 @@ function classifyIntent(text) {
 }
 
 
+function expandEnvPlaceholders(obj) {
+  if (obj && typeof obj === 'object') {
+    const out = Array.isArray(obj) ? [] : {};
+    for (const [k, v] of Object.entries(obj)) {
+      out[k] = expandEnvPlaceholders(v);
+    }
+    return out;
+  }
+  if (typeof obj === 'string') {
+    const m = obj.match(/^\$\{?([A-Z0-9_]+)\}?$/i);
+    if (m) {
+      const key = m[1];
+      return process.env[key] || '';
+    }
+  }
+  return obj;
+}
+
 function loadLLMConfig() {
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = path.dirname(__filename);
@@ -33,7 +51,7 @@ function loadLLMConfig() {
   } catch (_) {}
   try {
     const cfg = require(configPath);
-    return cfg || {};
+    return expandEnvPlaceholders(cfg || {});
   } catch (_) {
     return {};
   }
@@ -106,9 +124,9 @@ export async function runAgent(userInput, options = {}) {
     const cfg = loadLLMConfig();
     const info = cfg.qwen || {};
     const baseURL = info.baseURL || info.baseUrl || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
-    const apiKey = info.apiKey || process.env.DASHSCOPE_API_KEY || '';
+    const apiKey = info.apiKey || process.env.DASHSCOPE_API_KEY || process.env.Qwen_API_KEY || '';
     const model = info.model || 'qwen-plus';
-    console.log(`[代理] LLM配置 baseURL=${baseURL} model=${model}`);
+    console.log(`[agent] qwen direct config baseURL=${baseURL} model=${model}`);
 
     const facts = JSON.stringify(payload);
     const maxTurnsRaw = (info && (info.historyMaxTurns ?? info.maxHistoryTurns)) ?? (cfg && cfg.historyMaxTurns) ?? process.env.PM_HISTORY_MAX_TURNS;
