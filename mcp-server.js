@@ -45,7 +45,6 @@ app.post('/mcp/invoke', async (req, res) => {
         return res.json({ ok: true, result });
       }
       case 'policy.operation_guide': {
-        const policyId = input.policyId || input.policy_id || 'POLICY-001';
         const opRaw = String(input.operation || input.topic || '').trim();
         const operation = opRaw || '变更开放期';
         const guides = {
@@ -75,7 +74,7 @@ app.post('/mcp/invoke', async (req, res) => {
           ]
         };
         const steps = guides[operation] || [];
-        const result = { policyId, operation, steps };
+        const result = { operation, steps };
         console.log(`[mcp-svc][done] id=${id} tool=${tool} op=${operation} ok=true`);
         return res.json({ ok: true, result });
       }

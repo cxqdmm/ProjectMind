@@ -59,46 +59,65 @@ function loadLLMConfig() {
 
 // getLLM 已移除：统一采用 OpenAI SDK 兼容模式直连 Qwen
 
-const systemPrompt = `你是客服与产品顾问。\n你将获得结构化事实（JSON）。请基于事实简洁回答，包含要点，避免臆断。低置信度时建议补充信息或转人工。\n\n可用外部工具（由系统提供能力，触发由你决定）：\n- 文本触发：CALL: <provider>.<tool> <JSON输入>\n- JSON触发：CALL_JSON: {\"provider\":\"policy\",\"tool\":\"basic_info\",\"input\":{...}}\n- 示例：CALL: policy.basic_info {\"policyId\": \"POLICY-001\"}\n- 你只在确有需要时触发工具，避免无谓调用。`;
+const systemPrompt = `你是客服与产品顾问。\n你将获得结构化事实（JSON）。请基于事实简洁回答，包含要点，避免臆断。低置信度时建议补充信息或转人工。\n如需外部事实，请参考随后的工具说明与触发示例。`;
 
-function parseToolCall(text) {
+function parseToolCalls(text) {
   const s = String(text || "");
-  // JSON 触发形式：CALL_JSON: { provider, tool, input }
-  const mj = s.match(/CALL_JSON:\s*(\{[\s\S]*\})/i);
-  if (mj) {
+  const out = [];
+  // JSON 批量触发：CALL_JSONS: [ { provider, tool, input }, ... ]
+  const mjArr = s.match(/CALL_JSONS:\s*(\[[\s\S]*\])/i);
+  if (mjArr) {
     try {
-      const obj = JSON.parse(mj[1]);
-      let provider = String(obj.provider || "").trim();
-      let toolName = String(obj.tool || "").trim();
-      const input = obj.input ?? {};
-      // 允许 tool 写成 'provider.tool' 或仅写 'tool'，此处统一解析
-      if (toolName.includes(".")) {
-        const parts = toolName.split(".");
-        provider = provider || parts[0];
-        toolName = parts.slice(1).join(".");
+      const arr = JSON.parse(mjArr[1]);
+      if (Array.isArray(arr)) {
+        for (const obj of arr) {
+          let provider = String(obj?.provider || "").trim();
+          let toolName = String(obj?.tool || "").trim();
+          const input = obj?.input ?? {};
+          if (toolName.includes(".")) {
+            const parts = toolName.split(".");
+            provider = provider || parts[0];
+            toolName = parts.slice(1).join(".");
+          }
+          const normalized = (provider && toolName)
+            ? `${provider}.${toolName.replace(new RegExp(`^${provider}\.`), "")}`
+            : (provider || toolName);
+          out.push({ provider, tool: normalized, toolName, input });
+        }
       }
-      const normalized = (provider && toolName)
-        ? `${provider}.${toolName.replace(new RegExp(`^${provider}\.`), "")}`
-        : (provider || toolName);
-      return { provider, tool: normalized, toolName, input };
-    } catch (_) {
-      return null;
+    } catch (_) {}
+  }
+  // 单个 JSON 触发：沿用 parseToolCall
+  try {
+    const single = parseToolCall(s);
+    if (single) out.push(single);
+  } catch (_) {}
+  // 多行文本触发：支持同一消息中多条 CALL: ...
+  const re = /CALL:\s*([\w.-]+)\s*(\{[\s\S]*?\})/ig;
+  let m;
+  while ((m = re.exec(s))) {
+    const full = m[1];
+    const parts = full.split(".");
+    const provider = parts[0];
+    const toolSuffix = parts.slice(1).join(".");
+    const normalizedTool = toolSuffix ? `${provider}.${toolSuffix.replace(new RegExp(`^${provider}\.`), "")}` : provider;
+    try {
+      const input = JSON.parse(m[2]);
+      const toolName = normalizedTool.split(".").slice(1).join(".");
+      out.push({ provider, tool: normalizedTool, toolName, input });
+    } catch (_) {}
+  }
+  // 去重同一 provider/tool/input 的重复项
+  const dedup = [];
+  const seen = new Set();
+  for (const c of out) {
+    const key = `${c.provider}|${c.tool}|${JSON.stringify(c.input)}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      dedup.push(c);
     }
   }
-  // 文本触发形式：CALL: provider.tool { ... }
-  const m = s.match(/CALL:\s*([\w.-]+)\s*(\{[\s\S]*\})/i);
-  if (!m) return null;
-  const full = m[1];
-  const parts = full.split(".");
-  const provider = parts[0];
-  const toolSuffix = parts.slice(1).join(".");
-  const normalizedTool = toolSuffix ? `${provider}.${toolSuffix.replace(new RegExp(`^${provider}\.`), "")}` : provider;
-  try {
-    const input = JSON.parse(m[2]);
-    return { provider, tool: normalizedTool, toolName: normalizedTool.split(".").slice(1).join("."), input };
-  } catch (_) {
-    return null;
-  }
+  return dedup;
 }
 
 function clip(s, n = 400) {
@@ -117,17 +136,29 @@ async function reasoningLoop(client, model, baseMessages, maxSteps = 3) {
     const completion = await client.chat.completions.create({ model, messages });
     reply = String(completion?.choices?.[0]?.message?.content || '');
     console.log(`[推理] step=${step} ms=${Date.now()-t} reply=${clip(reply)}`);
-    const call = parseToolCall(reply);
-    if (call) {
-      const inv = await invokeMCPTool(call.provider, call.tool, call.input);
-      const toolResult = inv?.result ?? inv;
-      console.log(`[推理] 工具结果预览：${clip(JSON.stringify(toolResult))}`);
+    const calls = parseToolCalls(reply) || [];
+    if (calls.length > 0) {
+      const results = await Promise.all(calls.map(async (c) => {
+        try {
+          const inv = await invokeMCPTool(c.provider, c.tool, c.input);
+          const toolResult = inv?.result ?? inv;
+          return { ...c, ok: true, result: toolResult };
+        } catch (e) {
+          return { ...c, ok: false, error: String(e?.message || e) };
+        }
+      }));
+      const preview = results.map(r => `${r.provider}.${r.toolName}: ${clip(JSON.stringify(r.ok ? r.result : { error: r.error }))}`).join(' | ');
+      console.log(`[推理] 批量工具结果预览：${preview}`);
+      const userContent = results.map(r => {
+        const payload = r.ok ? r.result : { error: r.error };
+        return `工具(${r.provider}.${r.toolName})结果：${JSON.stringify(payload)}`;
+      }).join('\n');
       messages = [
         ...messages,
         { role: 'assistant', content: reply },
-        { role: 'user', content: `工具(${call.provider}.${call.toolName})结果：${JSON.stringify(toolResult)}` }
+        { role: 'user', content: userContent }
       ];
-      toolCalls++;
+      toolCalls += calls.length;
       continue;
     }
     // 无工具调用，视为任务已可完成，结束循环
@@ -242,6 +273,16 @@ function buildToolSystemJSON(tools) {
     json: {
       format: "CALL_JSON: {\"provider\":\"<provider>\",\"tool\":\"<tool>\",\"input\":{...}}",
       example: "CALL_JSON: {\"provider\":\"policy\",\"tool\":\"basic_info\",\"input\":{\"policyId\":\"POLICY-001\"}}"
+    },
+    batch: {
+      text: {
+        format: "同一消息可写多行 CALL 以并行触发",
+        example: "CALL: policy.basic_info {\"policyId\":\"POLICY-001\"}\nCALL: project.intro {\"name\":\"高端员福\"}"
+      },
+      json: {
+        format: "CALL_JSONS: [{\"provider\":\"<provider>\",\"tool\":\"<tool>\",\"input\":{...}}, ...]",
+        example: "CALL_JSONS: [{\"provider\":\"policy\",\"tool\":\"basic_info\",\"input\":{\"policyId\":\"POLICY-001\"}},{\"provider\":\"project\",\"tool\":\"intro\",\"input\":{\"name\":\"高端员福\"}}]"
+      }
     }
   };
   const obj = {
