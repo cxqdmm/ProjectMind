@@ -90,9 +90,37 @@ app.post('/mcp/invoke', async (req, res) => {
   }
 });
 
-// 兼容默认路径：POST /invoke -> /mcp/invoke（保持方法与体）
-app.post('/invoke', (req, res) => {
-  return res.redirect(307, '/mcp/invoke');
+// 直接处理 /invoke 路径的项目相关请求
+app.post('/invoke', async (req, res) => {
+  const id = `i${Date.now().toString(36)}${Math.random().toString(36).slice(2,6)}`;
+  const tool = String(req.body?.tool || '').trim();
+  const input = req.body?.input || {};
+  console.log(`[invoke-svc][start] id=${id} tool=${tool} inputLen=${JSON.stringify(input).length}`);
+  
+  try {
+    switch (tool) {
+      case 'project.intro': {
+        const nameRaw = String(input.name || input.projectName || '').trim();
+        const name = nameRaw || '示例项目';
+        const intros = {
+          '中小微线上': '中小微线上是面向中小微企业的线上保险服务平台，提供便捷的投保流程、智能核保和在线理赔服务，助力中小微企业快速获得保险保障。',
+          '中小微线下': '中小微线下是传统线下渠道的中小微企业保险服务项目，通过代理人和经纪人网络，为中小微企业提供个性化的保险咨询和投保服务。',
+          '高端员福': '高端员福是针对高端企业客户的员工福利保险项目，提供全面的员工健康保障、意外险和补充医疗等高品质保险产品和服务。',
+          '清单投保': '清单投保是批量投保管理系统，支持企业客户通过清单方式批量为员工投保，提供高效的保单管理和理赔处理服务。'
+        };
+        const intro = intros[name] || `项目 ${name} 的介绍暂未收录，请联系项目负责人获取更多信息。`;
+        console.log(`[invoke-svc][done] id=${id} tool=${tool} name=${name} ok=true`);
+        return res.json({ ok: true, result: { name, intro } });
+      }
+      default: {
+        console.warn(`[invoke-svc][warn] id=${id} unknown tool: ${tool}`);
+        return res.json({ ok: false, error: `未知工具: ${tool}` });
+      }
+    }
+  } catch (err) {
+    console.error(`[invoke-svc][error] id=${id} tool=${tool} err=`, err);
+    return res.status(500).json({ ok: false, error: '服务异常' });
+  }
 });
 
 // 统一 404 输出为 JSON 并记录日志，便于客户端诊断

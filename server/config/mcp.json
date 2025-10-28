@@ -81,6 +81,37 @@
           }
         }
       ]
+    },
+    "project": {
+      "type": "http",
+      "baseURL": "http://localhost:3100",
+      "invokePath": "/invoke",
+      "token": "",
+      "tools": [
+        {
+          "name": "project.intro",
+          "description": "根据项目名称查询项目的介绍信息",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "name": { 
+                "type": "string", 
+                "description": "项目名称（必填）",
+                "enum": ["中小微线上", "中小微线下", "高端员福", "清单投保"]
+              }
+            },
+            "required": ["name"],
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "intro": { "type": "string", "description": "项目简介" }
+            }
+          }
+        }
+      ]
     }
   }
 }
