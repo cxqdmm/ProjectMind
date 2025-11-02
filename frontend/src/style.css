@@ -18,22 +18,15 @@ a {
   color: #646cff;
   text-decoration: inherit;
 }
-a:hover {
-  color: #535bf2;
-}
+a:hover { color: #535bf2; }
 
 body {
   margin: 0;
-  display: flex;
-  place-items: center;
   min-width: 320px;
   min-height: 100vh;
 }
 
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
-}
+h1 { font-size: 3.2em; line-height: 1.1; }
 
 button {
   border-radius: 8px;
@@ -46,34 +39,31 @@ button {
   cursor: pointer;
   transition: border-color 0.25s;
 }
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
-}
+button:hover { border-color: #646cff; }
+button:focus, button:focus-visible { outline: 4px auto -webkit-focus-ring-color; }
 
-.card {
-  padding: 2em;
-}
+.card { padding: 2em; }
 
-#app {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
-}
+#app { max-width: 1280px; margin: 0 auto; padding: 2rem; text-align: center; }
 
 @media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
-  a:hover {
-    color: #747bff;
-  }
-  button {
-    background-color: #f9f9f9;
-  }
+  :root { color: #213547; background-color: #ffffff; }
+  a:hover { color: #747bff; }
+  button { background-color: #f9f9f9; }
 }
+
+/* ---- Tool event styles ---- */
+.tool-events { margin-top: 8px; text-align: left; }
+.tool-group { border: 1px dashed #e5e7eb; border-radius: 8px; padding: 8px; background: #fafafa; }
+.tool-group-title { font-size: 12px; color: #6b7280; margin-bottom: 8px; }
+.tool-card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px; margin-bottom: 8px; background: #fff; }
+.tool-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.tool-name { font-weight: 600; color: #111827; }
+.tool-status { font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid #e5e7eb; }
+.tool-status.pending { color: #6b7280; background: #f3f4f6; }
+.tool-status.running { color: #2563eb; background: #eff6ff; border-color: #bfdbfe; }
+.tool-status.completed { color: #16a34a; background: #ecfdf5; border-color: #86efac; }
+.tool-status.failed { color: #ef4444; background: #fee2e2; border-color: #fca5a5; }
+.tool-input, .tool-output { white-space: pre-wrap; font-size: 12px; line-height: 1.5; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 6px; }
+.tool-input { color: #374151; margin-bottom: 6px; }
+.tool-output { color: #111827; }

@@ -127,10 +127,11 @@ function clip(s, n = 400) {
 }
 
 // 迭代推理与工具调用循环：每步先询问是否需要工具，若需要则调用并继续；否则结束
-async function reasoningLoop(client, model, baseMessages, maxSteps = 3) {
+async function reasoningLoop(client, model, baseMessages, maxSteps = 3, runId = `r${Date.now().toString(36)}${Math.random().toString(36).slice(2,6)}`, onEvent = null) {
   let messages = [...baseMessages];
   let reply = '';
   let toolCalls = 0;
+  const events = [];
   for (let step = 1; step <= maxSteps; step++) {
     const t = Date.now();
     const completion = await client.chat.completions.create({ model, messages });
@@ -138,13 +139,100 @@ async function reasoningLoop(client, model, baseMessages, maxSteps = 3) {
     console.log(`[推理] step=${step} ms=${Date.now()-t} reply=${clip(reply)}`);
     const calls = parseToolCalls(reply) || [];
     if (calls.length > 0) {
-      const results = await Promise.all(calls.map(async (c) => {
+      const ts = Date.now();
+      const callsWithId = calls.map((c, i) => ({
+        ...c,
+        id: `t${ts.toString(36)}${Math.random().toString(36).slice(2,6)}${i}`,
+        startedAt: ts
+      }));
+      const startEvent = {
+        messageType: 'tool_calls',
+        runId,
+        step,
+        timestamp: ts,
+        calls: callsWithId.map(c => ({
+          id: c.id,
+          provider: c.provider,
+          tool: c.tool,
+          toolName: c.toolName,
+          name: c.toolName ? `${c.provider}.${c.toolName}` : c.tool,
+          status: 'started',
+          inputPreview: clip(JSON.stringify(c.input), 300),
+          startedAt: c.startedAt,
+          render: { variant: 'card', progress: true, collapsible: true }
+        }))
+      };
+      events.push(startEvent);
+      if (onEvent) try { onEvent(startEvent); } catch (_) {}
+      for (const c of callsWithId) {
+        const runningEvt = {
+          messageType: 'tool_update',
+          runId,
+          step,
+          timestamp: Date.now(),
+          id: c.id,
+          provider: c.provider,
+          tool: c.tool,
+          toolName: c.toolName,
+          name: c.toolName ? `${c.provider}.${c.toolName}` : c.tool,
+          status: 'running',
+          progress: null,
+          startedAt: c.startedAt,
+          render: { badge: 'processing' }
+        };
+        events.push(runningEvt);
+        if (onEvent) try { onEvent(runningEvt); } catch (_) {}
+      }
+      const results = await Promise.all(callsWithId.map(async (c) => {
+        const startedAt = Date.now();
         try {
           const inv = await invokeMCPTool(c.provider, c.tool, c.input);
           const toolResult = inv?.result ?? inv;
+          const completedAt = Date.now();
+          const evt = {
+            messageType: 'tool_update',
+            runId,
+            step,
+            timestamp: completedAt,
+            id: c.id,
+            provider: c.provider,
+            tool: c.tool,
+            toolName: c.toolName,
+            name: c.toolName ? `${c.provider}.${c.toolName}` : c.tool,
+            status: 'completed',
+            result: toolResult,
+            preview: clip(JSON.stringify(toolResult), 500),
+            startedAt,
+            completedAt,
+            durationMs: completedAt - c.startedAt,
+            render: { badge: 'success' }
+          };
+          events.push(evt);
+          if (onEvent) try { onEvent(evt); } catch (_) {}
           return { ...c, ok: true, result: toolResult };
         } catch (e) {
-          return { ...c, ok: false, error: String(e?.message || e) };
+          const completedAt = Date.now();
+          const errPayload = { message: String(e?.message || e) };
+          const evt = {
+            messageType: 'tool_update',
+            runId,
+            step,
+            timestamp: completedAt,
+            id: c.id,
+            provider: c.provider,
+            tool: c.tool,
+            toolName: c.toolName,
+            name: c.toolName ? `${c.provider}.${c.toolName}` : c.tool,
+            status: 'failed',
+            error: errPayload,
+            startedAt,
+            completedAt,
+            durationMs: completedAt - c.startedAt,
+            render: { badge: 'error' }
+          };
+          events.push(evt);
+          if (onEvent) try { onEvent(evt); } catch (_) {}
+          return { ...c, ok: false, error: errPayload.message };
         }
       }));
       const preview = results.map(r => `${r.provider}.${r.toolName}: ${clip(JSON.stringify(r.ok ? r.result : { error: r.error }))}`).join(' | ');
@@ -161,21 +249,19 @@ async function reasoningLoop(client, model, baseMessages, maxSteps = 3) {
       toolCalls += calls.length;
       continue;
     }
-    // 无工具调用，视为任务已可完成，结束循环
     messages = [...messages, { role: 'assistant', content: reply }];
-    return { reply, messages, toolCalls, steps: step };
+    return { reply, messages, toolCalls, steps: step, events };
   }
-  // 达到最大步数后仍未结束：请求最终回答
   const completion = await client.chat.completions.create({ model, messages: [...messages, { role: 'user', content: '请根据已有信息给出最终简洁回答。' }] });
   reply = String(completion?.choices?.[0]?.message?.content || '');
   messages = [...messages, { role: 'assistant', content: reply }];
-  return { reply, messages, toolCalls, steps: maxSteps };
+  return { reply, messages, toolCalls, steps: maxSteps, events };
 }
 
-export async function runAgent(userInput, options = {}) {
+export async function runAgentStream(userInput, options = {}, onEvent) {
   const sessionId = String(options?.sessionId || 'default');
   const intent = classifyIntent(userInput);
-  console.log(`[代理] 会话=${sessionId} 意图=${intent} 文本片段="${String(userInput).slice(0,80)}${String(userInput).length>80?'…':''}"`);
+  console.log(`[代理][SSE] 会话=${sessionId} 意图=${intent} 文本片段="${String(userInput).slice(0,80)}${String(userInput).length>80?'…':''}"`);
   let payload = {};
   try {
     const caps = getMCPCapabilities();
@@ -184,15 +270,12 @@ export async function runAgent(userInput, options = {}) {
   } catch (e) {
     console.warn(`[代理] 构建事实异常 会话=${sessionId}`, e);
   }
-
   try {
     const cfg = loadLLMConfig();
     const info = cfg.qwen || {};
     const baseURL = info.baseURL || info.baseUrl || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
     const apiKey = info.apiKey || process.env.DASHSCOPE_API_KEY || process.env.Qwen_API_KEY || '';
     const model = info.model || 'qwen-plus';
-    console.log(`[agent] qwen direct config baseURL=${baseURL} model=${model}`);
-
     const facts = JSON.stringify(payload);
     const maxTurnsRaw = (info && (info.historyMaxTurns ?? info.maxHistoryTurns)) ?? (cfg && cfg.historyMaxTurns) ?? process.env.PM_HISTORY_MAX_TURNS;
     const MAX_TURNS = Math.max(0, Math.min(50, Number(maxTurnsRaw) || 12));
@@ -207,22 +290,26 @@ export async function runAgent(userInput, options = {}) {
       ...history.map(m => ({ role: m.role, content: m.content })),
       { role: 'user', content: userInput }
     ];
-    console.log(`[推理] 输入消息`,messages);
     const maxStepsRaw = (info && (info.reasoningMaxSteps ?? info.maxReasoningSteps)) ?? (cfg && cfg.reasoningMaxSteps) ?? process.env.PM_MAX_REASONING_STEPS;
     const REASON_MAX_STEPS = Math.max(1, Math.min(8, Number(maxStepsRaw) || 3));
-    console.log(`[推理] 准备执行循环 steps=${REASON_MAX_STEPS}`);
     const client = new OpenAI({ apiKey, baseURL });
-    const { reply, messages: finalMessages, toolCalls, steps } = await reasoningLoop(client, model, messages, REASON_MAX_STEPS);
-    console.log(`[推理] 完成循环 steps=${steps} toolCalls=${toolCalls} replyClip=${clip(reply)}`);
-
+    const runId = `r${Date.now().toString(36)}${Math.random().toString(36).slice(2,6)}`;
+    const { reply, messages: finalMessages, toolCalls, steps } = await reasoningLoop(client, model, messages, REASON_MAX_STEPS, runId, onEvent);
     const baseLen = messages.length;
     const newSegments = (finalMessages || []).slice(baseLen).filter(m => m.role === 'assistant' || m.role === 'user');
     const updatedHistory = [...history, { role: 'user', content: userInput }, ...newSegments];
     const trimmed = updatedHistory.slice(-MAX_TURNS * 2);
     sessionHistories.set(sessionId, trimmed);
+    if (onEvent) {
+      const finalEvt = { messageType: 'assistant_final', runId, step: steps, timestamp: Date.now(), reply, citations: [] };
+      try { onEvent(finalEvt); } catch (_) {}
+    }
     return { reply, citations: [] };
   } catch (e) {
-    console.error(`[代理] LLM调用异常 会话=${sessionId}`, e);
+    if (onEvent) {
+      const errEvt = { messageType: 'assistant_final', error: String(e?.message || e), timestamp: Date.now() };
+      try { onEvent(errEvt); } catch (_) {}
+    }
     return { reply: '抱歉，我暂时无法回答这个问题。', citations: [] };
   }
 }
