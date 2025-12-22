@@ -2,7 +2,6 @@
   "historyMaxTurns": 12,
   "qwen": {
     "baseURL": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    "model": "qwen-plus",
-    "apiKey": "${Qwen_API_KEY}"
+    "model": "qwen-plus"
   }
 }
