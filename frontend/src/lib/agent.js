@@ -111,7 +111,8 @@ async function loadJSON(url) {
 
 
 import { LOCAL_MCP_TOOLS } from './localTools.js'
-import { loadSkillsManifest } from './skillsRuntime.js'
+import { loadSkillsManifest, loadAllSkillsMeta } from './skillsRuntime.js'
+import { createProvider } from './providers.js'
 
 async function invokeMCPTool(provider, tool, input) {
   const full = tool && tool.includes('.') ? tool : `${provider}.${tool}`
@@ -180,7 +181,12 @@ async function createChatCompletion(baseURL, apiKey, model, messages) {
   return r.json()
 }
 
-async function reasoningLoop(baseURL, apiKey, model, baseMessages, maxSteps, runId, onEvent) {
+async function createChatReply(provider, apiKey, messages) {
+  const content = await provider.chat(messages, apiKey)
+  return { choices: [ { message: { content } } ] }
+}
+
+async function reasoningLoop(provider, apiKey, baseMessages, maxSteps, runId, onEvent) {
   let messages = [...baseMessages]
   let reply = ''
   let toolCalls = 0
@@ -206,7 +212,7 @@ async function reasoningLoop(baseURL, apiKey, model, baseMessages, maxSteps, run
           return { ...c, ok: true, result: toolResult }
         } catch (e) {
           const completedAt = Date.now()
-          const errPayload = { message: String(e?.message || e) }
+          const errPayload = { code: 'TOOL_ERROR', message: String(e?.message || e) }
           const evt = { messageType: 'tool_update', runId, step: 0, timestamp: completedAt, id: c.id, provider: c.provider, tool: c.tool, toolName: c.toolName, name: c.toolName ? `${c.provider}.${c.toolName}` : c.tool, status: 'failed', error: errPayload, startedAt, completedAt, durationMs: completedAt - c.startedAt, render: { badge: 'error' } }
           events.push(evt)
           if (onEvent) try { onEvent(evt) } catch {}
@@ -231,7 +237,7 @@ async function reasoningLoop(baseURL, apiKey, model, baseMessages, maxSteps, run
     }
   } catch {}
   for (let step = 1; step <= maxSteps; step++) {
-    const completion = await createChatCompletion(baseURL, apiKey, model, messages)
+    const completion = await createChatReply(provider, apiKey, messages)
     reply = String(completion?.choices?.[0]?.message?.content || '')
     const calls = parseToolCalls(reply) || []
     if (calls.length > 0) {
@@ -257,7 +263,7 @@ async function reasoningLoop(baseURL, apiKey, model, baseMessages, maxSteps, run
           return { ...c, ok: true, result: toolResult }
         } catch (e) {
           const completedAt = Date.now()
-          const errPayload = { message: String(e?.message || e) }
+          const errPayload = { code: 'TOOL_ERROR', message: String(e?.message || e) }
           const evt = { messageType: 'tool_update', runId, step, timestamp: completedAt, id: c.id, provider: c.provider, tool: c.tool, toolName: c.toolName, name: c.toolName ? `${c.provider}.${c.toolName}` : c.tool, status: 'failed', error: errPayload, startedAt, completedAt, durationMs: completedAt - c.startedAt, render: { badge: 'error' } }
           events.push(evt)
           if (onEvent) try { onEvent(evt) } catch {}
@@ -282,7 +288,7 @@ async function reasoningLoop(baseURL, apiKey, model, baseMessages, maxSteps, run
     messages = [...messages, { role: 'assistant', content: reply }]
     return { reply, messages, toolCalls, steps: step, events }
   }
-  const completion = await createChatCompletion(baseURL, apiKey, model, [...messages, { role: 'user', content: '请根据已有信息给出最终简洁回答。' }])
+  const completion = await createChatReply(provider, apiKey, [...messages, { role: 'user', content: '请根据已有信息给出最终简洁回答。' }])
   const finalReply = String(completion?.choices?.[0]?.message?.content || '')
   messages = [...messages, { role: 'assistant', content: finalReply }]
   return { reply: finalReply, messages, toolCalls, steps: maxSteps, events }
@@ -310,24 +316,64 @@ export async function runAgentBrowser(userInput, options = {}, onEvent) {
       },
       outputSchema: { type: 'object', properties: { key: { type: 'string' }, meta: { type: 'object' }, body: { type: 'string' } } }
     }
-    payload.tools = [...(payload.tools || []), skillTool]
+    const skillExecTool = {
+      provider: 'skill',
+      tool: 'execute',
+      name: 'skill.execute',
+      description: '执行技能并返回技能定义与正文，前端仅用于注入与展示',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          skill: { type: 'string', enum: skills.map(s => s.key) },
+          args: { type: 'object' }
+        },
+        required: ['skill']
+      },
+      outputSchema: { type: 'object', properties: { key: { type: 'string' }, manifest: { type: 'object' }, args: { type: 'object' }, body: { type: 'string' } } }
+    }
+    payload.tools = [...(payload.tools || []), skillTool, skillExecTool]
   } catch {}
   const cfg = await loadJSON('/llm.json')
-  const info = cfg.qwen || {}
-  const baseURL = info.baseURL || info.baseUrl || 'https://dashscope.aliyuncs.com/compatible-mode/v1'
-  const model = info.model || 'qwen-plus'
+  const provider = createProvider(cfg)
   const facts = JSON.stringify(payload)
+  try {
+    const toolNames = Object.keys(LOCAL_MCP_TOOLS || {})
+    const extra = toolNames.map(full => {
+      const parts = String(full).split('.')
+      const provider = parts[0]
+      const toolName = parts.slice(1).join('.')
+      return {
+        provider,
+        tool: toolName,
+        name: full,
+        description: '本地工具',
+        inputSchema: { type: 'object', properties: {} },
+        outputSchema: { type: 'object', properties: {} }
+      }
+    })
+    payload.tools = [...(payload.tools || []), ...extra]
+  } catch {}
   const maxTurnsRaw = (info && (info.historyMaxTurns ?? info.maxHistoryTurns)) ?? (cfg && cfg.historyMaxTurns)
   const MAX_TURNS = Math.max(0, Math.min(50, Number(maxTurnsRaw) || 12))
   const history = sessionHistories.get(sessionId) || []
   const tools = (payload.tools || [])
   const toolSystemMsg = buildToolSystemJSON(tools)
+  let skillsMetaMsg = ''
+  try {
+    const metas = await loadAllSkillsMeta()
+    const arr = metas.map(m => {
+      const name = String(m?.meta?.name || m.key)
+      const desc = String(m?.meta?.description || '')
+      return `${name}: ${desc}`
+    }).filter(Boolean)
+    if (arr.length) skillsMetaMsg = `可用技能索引：\n${arr.join('\n')}`
+  } catch {}
   const sysReasoningMsg = '指令：采用逐步推理，每步判断是否需要工具（CALL/CALL_JSON）。当任务可完成时直接给出最终回答。'
-  const messages = [ { role: 'system', content: '你是客服与产品顾问。\n你将获得结构化事实（JSON）。请基于事实简洁回答，包含要点，避免臆断。低置信度时建议补充信息或转人工。\n如需外部事实，请参考随后的工具说明与触发示例。' }, { role: 'system', content: toolSystemMsg }, { role: 'system', content: sysReasoningMsg }, ...history.map(m => ({ role: m.role, content: m.content })), { role: 'user', content: userInput } ]
+  const messages = [ { role: 'system', content: '你是客服与产品顾问。\n你将获得结构化事实（JSON）。请基于事实简洁回答，包含要点，避免臆断。低置信度时建议补充信息或转人工。\n如需外部事实，请参考随后的工具说明与触发示例。' }, ...(skillsMetaMsg ? [{ role: 'system', content: skillsMetaMsg }] : []), { role: 'system', content: toolSystemMsg }, { role: 'system', content: sysReasoningMsg }, ...history.map(m => ({ role: m.role, content: m.content })), { role: 'user', content: userInput } ]
   const maxStepsRaw = (info && (info.reasoningMaxSteps ?? info.maxReasoningSteps)) ?? (cfg && cfg.reasoningMaxSteps)
   const REASON_MAX_STEPS = Math.max(1, Math.min(8, Number(maxStepsRaw) || 3))
   const runId = `r${Date.now().toString(36)}${Math.random().toString(36).slice(2,6)}`
-  const { reply, messages: finalMessages, toolCalls, steps, events } = await reasoningLoop(baseURL, apiKey, model, messages, REASON_MAX_STEPS, runId, onEvent)
+  const { reply, messages: finalMessages, toolCalls, steps, events } = await reasoningLoop(provider, apiKey, messages, REASON_MAX_STEPS, runId, onEvent)
   const baseLen = messages.length
   const newSegments = (finalMessages || []).slice(baseLen).filter(m => m.role === 'assistant' || m.role === 'user')
   const updatedHistory = [...history, { role: 'user', content: userInput }, ...newSegments]
@@ -339,4 +385,3 @@ export async function runAgentBrowser(userInput, options = {}, onEvent) {
   }
   return { reply, citations: [], events }
 }
-

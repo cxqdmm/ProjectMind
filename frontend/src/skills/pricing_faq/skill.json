@@ -1,0 +1,24 @@
+{
+  "id": "pricing_faq",
+  "name": "价格与套餐",
+  "version": "0.1.0",
+  "description": "当用户询问价格、收费、套餐或 pro/lite 时使用",
+  "intents": ["price", "套餐", "收费", "pro", "lite"],
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "product": { "type": "string", "description": "产品或项目名称" }
+    },
+    "required": ["product"]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "product": { "type": "string" },
+      "plans": { "type": "array" }
+    }
+  },
+  "permissions": [],
+  "examples": [],
+  "dependencies": []
+}

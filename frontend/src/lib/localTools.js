@@ -1,3 +1,12 @@
+async function tryImportSkillTool(key) {
+  try {
+    const mod = await import(`../skills/${key}/tool.js`)
+    return typeof mod?.run === 'function' ? mod.run : null
+  } catch {
+    return null
+  }
+}
+
 export const LOCAL_MCP_TOOLS = {
   'policy.basic_info': (input) => {
     const id = String(input?.policyId || 'POLICY-001')
@@ -50,9 +59,31 @@ export const LOCAL_MCP_TOOLS = {
     return m
   },
   'skill.load': async (input) => {
-    const { loadSkillByName } = await import('./skillsRuntime.js')
+    const { loadSkillByName, fetchSkillFile } = await import('./skillsRuntime.js')
     const key = String(input?.skill || '')
     const s = await loadSkillByName(key)
-    return s
+    const files = Array.isArray(input?.files) ? input.files : []
+    const extras = []
+    for (const f of files) {
+      try {
+        const ex = await fetchSkillFile(key, f)
+        extras.push(ex)
+      } catch {}
+    }
+    return { key: s.key, meta: s.meta, body: s.body, extras }
+  },
+  'skill.execute': async (input) => {
+    const { loadSkillManifest, loadSkillByName } = await import('./skillsRuntime.js')
+    const key = String(input?.skill || '')
+    if (!key) throw new Error('skill required')
+    const def = await loadSkillManifest(key)
+    const s = await loadSkillByName(key)
+    const args = input?.args || {}
+    let result = null
+    const runner = await tryImportSkillTool(key)
+    if (runner) {
+      result = await Promise.resolve(runner(args))
+    }
+    return { key, manifest: def, args, body: s.body, result }
   }
 }

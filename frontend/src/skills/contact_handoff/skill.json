@@ -1,0 +1,23 @@
+{
+  "id": "contact_handoff",
+  "name": "转人工客服",
+  "version": "0.1.0",
+  "description": "当用户需要人工客服或电话支持时使用",
+  "intents": ["人工", "客服", "电话", "转接"],
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "reason": { "type": "string", "description": "转人工原因，可选" }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "contact": { "type": "string" },
+      "hours": { "type": "string" }
+    }
+  },
+  "permissions": [],
+  "examples": [],
+  "dependencies": []
+}

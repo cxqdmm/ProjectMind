@@ -1,0 +1,26 @@
+{
+  "id": "policy_basic_info",
+  "name": "保单信息",
+  "version": "0.1.0",
+  "description": "当用户询问保单生效、额度或保障范围时使用",
+  "intents": ["policy", "保单", "额度", "保障"],
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "policyId": { "type": "string", "description": "保单编号" }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "policyId": { "type": "string" },
+      "effectiveDate": { "type": "string" },
+      "expiryDate": { "type": "string" },
+      "insuredAmount": { "type": "number" },
+      "diseaseScope": { "type": "string" }
+    }
+  },
+  "permissions": [],
+  "examples": [],
+  "dependencies": []
+}

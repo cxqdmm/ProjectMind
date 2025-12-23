@@ -1,7 +1,6 @@
-async function fetchText(url) {
-  const r = await fetch(url)
-  if (!r.ok) throw new Error(`load ${url} failed`)
-  return r.text()
+async function importRaw(path) {
+  const m = await import(/* @vite-ignore */ path)
+  return typeof m === 'string' ? m : (m?.default ?? '')
 }
 
 function parseFrontmatter(md) {
@@ -24,15 +23,76 @@ function parseFrontmatter(md) {
 }
 
 export async function loadSkillsManifest() {
-  const r = await fetch('/skills/manifest.json')
-  if (!r.ok) return { skills: [] }
-  return r.json()
+  try {
+    const m = await import('../skills/manifest.json')
+    return m?.default ?? m
+  } catch {
+    return { skills: [] }
+  }
+}
+
+export async function loadSkillManifest(name) {
+  const key = String(name || '').trim()
+  if (!key) throw new Error('skill name required')
+  try {
+    const m = await import(/* @vite-ignore */ `../skills/${key}/skill.json`)
+    return m?.default ?? m
+  } catch {
+    return { id: key, name: key, version: '0.1.0', description: '', intents: [], input_schema: { type: 'object', properties: {} }, output_schema: { type: 'object', properties: {} }, permissions: [], examples: [], dependencies: [] }
+  }
 }
 
 export async function loadSkillByName(name) {
   const key = String(name || '').trim()
   if (!key) throw new Error('skill name required')
-  const md = await fetchText(`/skills/${key}/SKILL.md`)
+  const md = await importRaw(/* @vite-ignore */ `../skills/${key}/SKILL.md?raw`)
   const { meta, body } = parseFrontmatter(md)
   return { key, meta, body }
+}
+
+export async function loadAllSkills() {
+  const manifest = await loadSkillsManifest()
+  const skills = Array.isArray(manifest?.skills) ? manifest.skills : []
+  const out = []
+  for (const s of skills) {
+    const key = String(s?.key || '')
+    if (!key) continue
+    try {
+      const def = await loadSkillManifest(key)
+      const md = await loadSkillByName(key)
+      out.push({ key, manifest: def, meta: md.meta, body: md.body })
+    } catch {}
+  }
+  return out
+}
+
+export async function loadSkillMeta(name) {
+  const key = String(name || '').trim()
+  if (!key) throw new Error('skill name required')
+  const md = await importRaw(/* @vite-ignore */ `../skills/${key}/SKILL.md?raw`)
+  const { meta } = parseFrontmatter(md)
+  return { key, meta }
+}
+
+export async function loadAllSkillsMeta() {
+  const manifest = await loadSkillsManifest()
+  const skills = Array.isArray(manifest?.skills) ? manifest.skills : []
+  const metas = []
+  for (const s of skills) {
+    const key = String(s?.key || '')
+    if (!key) continue
+    try {
+      const m = await loadSkillMeta(key)
+      metas.push(m)
+    } catch {}
+  }
+  return metas
+}
+
+export async function fetchSkillFile(key, file) {
+  const k = String(key || '').trim()
+  const f = String(file || '').trim()
+  if (!k || !f) throw new Error('skill key and file required')
+  const text = await importRaw(/* @vite-ignore */ `../skills/${k}/${f}?raw`)
+  return { file, content: text }
 }
