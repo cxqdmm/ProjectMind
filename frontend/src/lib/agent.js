@@ -1,39 +1,7 @@
 // 会话级历史，用于截断与上下文保留
 const sessionHistories = new Map()
 
-// 解析单条 CALL_JSON/CALL 指令为 { provider, tool, toolName, input }
-function parseToolCall(s) {
-  const m = String(s || '').match(/CALL_JSON:\s*(\{[\s\S]*\})/i)
-  if (m) {
-    try {
-      const obj = JSON.parse(m[1])
-      let provider = String(obj?.provider || '').trim()
-      let toolName = String(obj?.tool || '').trim()
-      const input = obj?.input ?? {}
-      if (toolName.includes('.')) {
-        const parts = toolName.split('.')
-        provider = provider || parts[0]
-        toolName = parts.slice(1).join('.')
-      }
-      const normalized = provider && toolName ? `${provider}.${toolName.replace(new RegExp(`^${provider}\.`), '')}` : (provider || toolName)
-      return { provider, tool: normalized, toolName, input }
-    } catch {}
-  }
-  const m2 = String(s || '').match(/CALL:\s*([\w.-]+)\s*(\{[\s\S]*?\})/i)
-  if (m2) {
-    const full = m2[1]
-    const parts = full.split('.')
-    const provider = parts[0]
-    const toolSuffix = parts.slice(1).join('.')
-    const normalizedTool = toolSuffix ? `${provider}.${toolSuffix.replace(new RegExp(`^${provider}\.`), '')}` : provider
-    try {
-      const input = JSON.parse(m2[2])
-      const toolName = normalizedTool.split('.').slice(1).join('.')
-      return { provider, tool: normalizedTool, toolName, input }
-    } catch {}
-  }
-  return null
-}
+// 仅解析批量 CALL_JSONS 为 { provider, tool, toolName, input } 数组
 
 // 解析消息中可能出现的多条工具调用（含批量 CALL_JSONS）
 function parseToolCalls(text) {
@@ -57,24 +25,6 @@ function parseToolCalls(text) {
           out.push({ provider, tool: normalized, toolName, input })
         }
       }
-    } catch {}
-  }
-  try {
-    const single = parseToolCall(s)
-    if (single) out.push(single)
-  } catch {}
-  const re = /CALL:\s*([\w.-]+)\s*(\{[\s\S]*?\})/ig
-  let m
-  while ((m = re.exec(s))) {
-    const full = m[1]
-    const parts = full.split('.')
-    const provider = parts[0]
-    const toolSuffix = parts.slice(1).join('.')
-    const normalizedTool = toolSuffix ? `${provider}.${toolSuffix.replace(new RegExp(`^${provider}\.`), '')}` : provider
-    try {
-      const input = JSON.parse(m[2])
-      const toolName = normalizedTool.split('.').slice(1).join('.')
-      out.push({ provider, tool: normalizedTool, toolName, input })
     } catch {}
   }
   const dedup = []
@@ -181,14 +131,7 @@ function buildToolSystemJSON(tools) {
       output: { properties: out }
     }
   })
-  const trigger = {
-    text: { format: 'CALL: skill.<load|execute> <JSON输入>', example: 'CALL: skill.load {"skill":"poem_writer","files":["references/styles.md"]}' },
-    json: { format: 'CALL_JSON: {"provider":"skill","tool":"<load|execute>","input":{...}}', example: 'CALL_JSON: {"provider":"skill","tool":"execute","input":{"skill":"poem_writer","args":{"theme":"春日柳莺","form":"qijue"}}}' },
-    batch: {
-      text: { format: '同一消息可写多行 CALL 以并行触发', example: 'CALL: skill.load {"skill":"poem_writer","files":["references/rhyme.md"]}\nCALL: skill.execute {"skill":"poem_writer","args":{"theme":"春日柳莺","form":"qijue"}}' },
-      json: { format: 'CALL_JSONS: [{"provider":"skill","tool":"<load|execute>","input":{...}}, ...]', example: 'CALL_JSONS: [{"provider":"skill","tool":"load","input":{"skill":"poem_writer","files":["references/checklist.md"]}},{"provider":"skill","tool":"execute","input":{"skill":"poem_writer","args":{"theme":"春日柳莺","form":"qijue"}}}]' }
-    }
-  }
+  const trigger = { format: 'CALL_JSONS: [{"provider":"skill","tool":"<load|execute>","input":{...}}, ...]', example: 'CALL_JSONS: [{"provider":"skill","tool":"load","input":{"skill":"poem_writer","files":["references/checklist.md"]}},{"provider":"skill","tool":"execute","input":{"skill":"poem_writer","args":{"theme":"春日柳莺","form":"qijue"}}}]' }
   const obj = { messageType: 'mcp_tools', tools: items, trigger }
   return JSON.stringify(obj, null, 2)
 }
@@ -201,13 +144,12 @@ async function createChatReply(provider, apiKey, messages) {
 
 // 推理主循环：逐步生成 → 解析工具调用 → 执行 → 注入上下文
 async function reasoningLoop(provider, apiKey, baseMessages, runId, onEvent) {
-  debugger
   let messages = [...baseMessages]
   let reply = ''
   let toolCalls = 0
   const events = []
   try {
-    // 步0：支持用户消息中直接包含 CALL/CALL_JSON，先执行一次
+    // 步0：支持用户消息中直接包含 CALL_JSONS，先执行一次
     const lastMsg = messages[messages.length - 1]
     const primCalls = parseToolCalls(lastMsg?.content || '')
     if (primCalls.length > 0) {
@@ -251,6 +193,9 @@ async function reasoningLoop(provider, apiKey, baseMessages, runId, onEvent) {
             const content = String(ex?.content || '')
             if (content) skillMsgs.push({ role: 'system', content: name ? `${name}\n${content}` : content })
           }
+          const loadedKey = String(r.result?.key || '')
+          const loadedFiles = extras.map(ex => String(ex?.file || '')).filter(Boolean)
+          otherSummaries.push(`工具(${r.provider}.${r.toolName})加载完成：${JSON.stringify({ key: loadedKey, files: loadedFiles })}`)
         } else if (r.ok && r.tool.startsWith('skill.execute')) {
           const body = String(r.result?.body || '')
           if (body) skillMsgs.push({ role: 'system', content: body })
@@ -267,7 +212,7 @@ async function reasoningLoop(provider, apiKey, baseMessages, runId, onEvent) {
       return { reply, messages, toolCalls, steps: 0, events }
     }
   } catch {}
-  // 步1..N：逐步推理；每步检查是否有新工具调用
+  // 步1..N：逐步推理；每步检查是否有新工具调用（仅支持 CALL_JSONS）
   let step = 1
   while (true) {
     const completion = await createChatReply(provider, apiKey, messages)
@@ -314,15 +259,18 @@ async function reasoningLoop(provider, apiKey, baseMessages, runId, onEvent) {
         if (r.ok && r.tool.startsWith('skill.load')) {
           const body = String(r.result?.body || '')
           const extras = Array.isArray(r.result?.extras) ? r.result.extras : []
-          if (body) skillMsgs.push({ role: 'system', content: body })
+          if (body) skillMsgs.push({ role: 'assistant', content: body })
           for (const ex of extras) {
             const name = String(ex?.file || '')
             const content = String(ex?.content || '')
-            if (content) skillMsgs.push({ role: 'system', content: name ? `${name}\n${content}` : content })
+            if (content) skillMsgs.push({ role: 'assistant', content: name ? `${name}\n${content}` : content })
           }
+          const loadedKey = String(r.result?.key || '')
+          const loadedFiles = extras.map(ex => String(ex?.file || '')).filter(Boolean)
+          otherSummaries.push(`工具(${r.provider}.${r.toolName})加载完成：${JSON.stringify({ key: loadedKey, files: loadedFiles })}`)
         } else if (r.ok && r.tool.startsWith('skill.execute')) {
           const body = String(r.result?.body || '')
-          if (body) skillMsgs.push({ role: 'system', content: body })
+          if (body) skillMsgs.push({ role: 'assistant', content: body })
           const payload = r.result
           otherSummaries.push(`工具(${r.provider}.${r.toolName})结果：${JSON.stringify(payload)}`)
         } else {
@@ -401,7 +349,7 @@ export async function runAgentBrowser(userInput, options = {}, onEvent) {
     }).filter(Boolean)
     if (arr.length) skillsMetaMsg = `可用技能索引：\n${arr.join('\n')}`
   } catch {}
-  const sysReasoningMsg = '指令：采用逐步推理。如需技能支持，先调用 skill.load 注入 SKILL.md 正文与指定 files；需要确定性约束或计算时调用 skill.execute。可使用 CALL/CALL_JSON/CALL_JSONS 触发工具；当任务可完成时输出最终简洁回答。'
+  const sysReasoningMsg = '指令：采用逐步推理。如需技能支持，先调用 skill.load 注入 SKILL.md 正文与指定 files；需要确定性约束或计算时调用 skill.execute。可使用 CALL_JSONS 触发工具；当任务可完成时输出最终简洁回答。'
   const messages = [ { role: 'system', content: '你是智能助手。\n优先基于当前对话语境作答；当需要专业流程/模板/约束时，按需使用 Skills（skill.load/skill.execute）加载并执行。\n保持回答简洁、包含要点、避免臆断；低置信度时先澄清或提示补充信息。' }, ...(skillsMetaMsg ? [{ role: 'system', content: skillsMetaMsg }] : []), { role: 'system', content: toolSystemMsg }, { role: 'system', content: sysReasoningMsg }, ...history.map(m => ({ role: m.role, content: m.content })), { role: 'user', content: userInput } ]
   // 执行推理循环，并维护会话历史与最终事件
   const runId = `r${Date.now().toString(36)}${Math.random().toString(36).slice(2,6)}`
