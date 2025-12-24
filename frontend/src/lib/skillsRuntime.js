@@ -62,10 +62,14 @@ export async function loadAllSkillsMeta() {
   return metas
 }
 
-export async function fetchSkillFile(key, file) {
+export async function fetchSkillReference(key, file) {
   const k = String(key || '').trim()
-  const f = String(file || '').trim()
-  if (!k || !f) throw new Error('skill key and file required')
+  const raw = String(file || '').trim()
+  if (!k || !raw) throw new Error('skill key and file required')
+  let f = raw
+  if (!(f.startsWith('references/') || f.startsWith('reference/'))) {
+    f = `references/${f}`
+  }
   const text = await importRaw(/* @vite-ignore */ `../skills/${k}/${f}?raw`)
-  return { file, content: text }
+  return { file: f, content: text }
 }

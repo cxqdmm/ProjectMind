@@ -1,5 +1,5 @@
 {
   "skills": [
-    { "key": "poem_writer", "name": "古诗编写", "description": "当用户需要创作中文古诗（绝句/律诗/藏头诗等）时使用" }
+    { "key": "poem_writer", "name": "古诗编写", "description": "创作中文诗歌（现代诗/绝句/词），并提供自检与润色建议" }
   ]
 }
