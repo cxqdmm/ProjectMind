@@ -1,10 +1,5 @@
 {
   "skills": [
-    { "key": "project_intro", "name": "项目介绍", "description": "当用户询问某项目的介绍、方案或产品信息时使用" },
-    { "key": "pricing_faq", "name": "价格与套餐", "description": "当用户询问价格、收费、套餐或 pro/lite 时使用" },
-    { "key": "refund_guide", "name": "退款指南", "description": "当用户提出退款或退费需求时使用" },
-    { "key": "policy_health_rules", "name": "健告规则", "description": "当用户咨询健告、等待期或免责条款时使用" },
-    { "key": "policy_basic_info", "name": "保单信息", "description": "当用户询问保单生效、额度或保障范围时使用" },
-    { "key": "contact_handoff", "name": "转人工客服", "description": "当用户需要人工客服或电话支持时使用" }
+    { "key": "poem_writer", "name": "古诗编写", "description": "当用户需要创作中文古诗（绝句/律诗/藏头诗等）时使用" }
   ]
 }
