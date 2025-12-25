@@ -72,11 +72,11 @@ async function invokeMCPTool(provider, tool, input) {
     );
     const name = String(input?.skill || "");
     if (!name) throw new Error("skill required");
-    if (full.startsWith("skill.load")) {
+    if (full == "skill.load") {
       const s = await loadSkillByName(name);
       return { result: { key: s.key, meta: s.meta, body: s.body } };
     }
-    if (full.startsWith("skill.loadReference")) {
+    if (full == "skill.loadReference") {
       const files = Array.isArray(input?.files)
         ? input.files
         : input?.file
@@ -91,21 +91,32 @@ async function invokeMCPTool(provider, tool, input) {
       }
       return { result: { key: name, extras } };
     }
-    if (full.startsWith("skill.execute")) {
+    if (full  == "skill.execute") {
       const s = await loadSkillByName(name);
       const toolName = String(input?.tool || "tool");
       let run = null;
       try {
         const mod = await import(
-          /* @vite-ignore */ `../skills/${name}/scripts/${toolName}.js`
+          /* @vite-ignore */ `../skills/${name}/${toolName}`
         );
         run = typeof mod?.run === "function" ? mod.run : null;
       } catch {}
       const args = input?.args || {};
-      const result = run ? await Promise.resolve(run(args)) : null;
-      return {
-        result: { key: name, tool: toolName, args, body: s.body, result },
-      };
+      if (run) {
+        const output = await Promise.resolve(run(args));
+        return {
+          result: { key: name, tool: toolName, args, body: output },
+        };
+      } else {
+        const err = {
+          code: "SKILL_RUN_NOT_FOUND",
+          message: `skill ${name} 没有提供 ${toolName} 可执行脚本`,
+          script: `../skills/${name}/scripts/${toolName}.js`,
+        };
+        return {
+          result: { key: name, tool: toolName, args, body: null, error: err },
+        };
+      }
     }
     throw new Error(`tool ${full} not found`);
   }
@@ -325,6 +336,13 @@ async function reasoningLoop(provider, apiKey, baseMessages, runId, onEvent) {
           otherSummaries.push(
             `工具(${r.provider}.${r.toolName})结果：${JSON.stringify(payload)}`
           );
+          if (r.result && r.result.error) {
+            otherSummaries.push(
+              `工具(${r.provider}.${r.toolName})异常：${JSON.stringify(
+                r.result.error
+              )}`
+            );
+          }
         } else {
           const payload = r.ok ? r.result : { error: r.error };
           otherSummaries.push(
@@ -521,6 +539,13 @@ async function reasoningLoop(provider, apiKey, baseMessages, runId, onEvent) {
           otherSummaries.push(
             `工具(${r.provider}.${r.toolName})结果：${JSON.stringify(payload)}`
           );
+          if (r.result && r.result.error) {
+            otherSummaries.push(
+              `工具(${r.provider}.${r.toolName})异常：${JSON.stringify(
+                r.result.error
+              )}`
+            );
+          }
         } else {
           const payload = r.ok ? r.result : { error: r.error };
           otherSummaries.push(
@@ -533,7 +558,7 @@ async function reasoningLoop(provider, apiKey, baseMessages, runId, onEvent) {
         { role: "assistant", content: reply },
         ...skillMsgs,
         ...(otherSummaries.length
-          ? [{ role: "user", content: otherSummaries.join("\n") }]
+          ? [{ role: "assistant", content: otherSummaries.join("\n") }]
           : []),
       ];
       toolCalls += calls.length;

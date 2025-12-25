@@ -1,4 +1,5 @@
 export function createProvider(config) {
+    
   const qwen = config?.qwen || {}
   const baseURL = qwen.baseURL || qwen.baseUrl || 'https://dashscope.aliyuncs.com/compatible-mode/v1'
   const model = qwen.model || 'qwen-plus'
