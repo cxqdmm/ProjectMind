@@ -1,7 +1,7 @@
 <template>
   <div class="app">
     <header class="header">
-      <h1>ProjectMind · Vue3 聊天演示</h1>
+      <h1>智能助手</h1>
       <p class="subtitle">产品咨询与客诉问题最小可用骨架</p>
       <div class="settings">
         <label>
@@ -16,7 +16,8 @@
         <div v-for="(m, idx) in messages" :key="idx" class="message" :class="m.role">
           <div class="role">{{ m.role === 'user' ? '你' : '助手' }}</div>
           <div class="content">
-            <pre>{{ m.content }}</pre>
+            <div v-if="m.role === 'assistant'" class="md" v-html="renderMarkdown(m.content)"></div>
+            <pre v-else>{{ m.content }}</pre>
             <div v-if="m.citations?.length" class="citations">
               引用：
               <span v-for="(c, i) in m.citations" :key="i" class="citation-item" :title="c.snippet || ''">
@@ -26,7 +27,7 @@
 
             <div v-if="m.events?.length" class="tool-events">
               <div v-for="(batch, bi) in buildToolView(m.events)" :key="bi" class="tool-group">
-                <div class="tool-group-title">工具批次 · {{ batch.calls.length }} 个调用</div>
+                <div class="tool-group-title">函数批次 · {{ batch.calls.length }} 个调用</div>
                 <div class="tool-list">
                   <div v-for="call in batch.calls" :key="call.id" class="tool-row">
                     <div class="tool-row-head">
@@ -71,6 +72,8 @@
 
 <script setup>
 import { ref, onMounted, nextTick } from 'vue'
+import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 import { runAgentBrowser } from './lib/agent'
 
 const messages = ref([])
@@ -90,6 +93,14 @@ function scrollToBottom() {
 
 function formatJSON(v) {
   try { return JSON.stringify(v ?? {}, null, 2) } catch (_) { return String(v) }
+}
+
+function renderMarkdown(t) {
+  try {
+    return DOMPurify.sanitize(marked.parse(String(t || '')))
+  } catch (_) {
+    return DOMPurify.sanitize(String(t || ''))
+  }
 }
 
 function isOpen(id) { return openIds.value.has(String(id)) }
@@ -255,44 +266,54 @@ function onApiKeyChange() {
 </script>
 
 <style scoped>
-.app { color: #222; background: #f7f7f7; min-height: 100vh; }
-.header { background: #111827; color: #fff; padding: 24px 16px; }
-.header h1 { margin: 0; font-size: 20px; }
-.subtitle { color: #cbd5e1; margin-top: 4px; }
-.settings { margin-top: 8px; display: flex; align-items: center; gap: 8px; }
-.settings input { padding: 6px 8px; border: 1px solid #334155; border-radius: 6px; background: #0b1220; color: #e5e7eb; }
-.main { max-width: 840px; margin: 0 auto; padding: 16px; }
-.messages { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; min-height: 300px; max-height: 60vh; overflow-y: auto; }
-.message { display: flex; gap: 12px; margin-bottom: 12px; }
-.role { font-weight: 600; min-width: 64px; }
-.user .role { color: #2563eb; }
-.assistant .role { color: #16a34a; }
-.content pre { white-space: pre-wrap; line-height: 1.5; margin: 0; }
-.citations { font-size: 12px; color: #6b7280; margin-top: 6px; }
-.citation-item { display: inline-block; background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 6px; padding: 4px 8px; margin-right: 8px; }
-.input-row { display: flex; gap: 8px; margin-top: 12px; }
-.input-row input { flex: 1; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; }
-.input-row button { padding: 0 16px; border: none; border-radius: 6px; background: #111827; color: #fff; font-weight: 600; cursor: pointer; }
-.input-row button:hover { background: #374151; }
-.tip { font-size: 12px; color: #6b7280; margin-top: 8px; }
+.app { color: #1f2937; background: #fff7ed; min-height: 100vh;}
+.header { background: linear-gradient(135deg,#fb923c 0%, #f97316 70%); color: #fff; padding: 28px 20px; }
+.header h1 { margin: 0; font-size: 24px; letter-spacing: 0.2px; }
+.subtitle { color: #ffedd5; margin-top: 6px; }
+.settings { margin-top: 12px; display: flex; align-items: center; gap: 10px; }
+.settings input { padding: 8px 10px; border: 1px solid #fdba74; border-radius: 10px; background: #fff7ed; color: #7c2d12; }
+.main { margin: 0 auto; padding: 20px; }
+.messages { background: #ffffff; border: 1px solid #fed7aa; border-radius: 14px; padding: 16px; min-height: 360px; max-height: 70vh; overflow-y: auto; box-shadow: 0 6px 20px rgba(249,115,22,0.12); }
+.message { display: flex; gap: 14px; margin-bottom: 14px; }
+.role { font-weight: 700; min-width: 64px; }
+.user .role { color: #1d4ed8; }
+.assistant .role { color: #f97316; }
+.content pre { white-space: pre-wrap; line-height: 1.6; margin: 0; font-size: 14px; }
+.citations { font-size: 12px; color: #a16207; margin-top: 8px; }
+.citation-item { display: inline-block; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 999px; padding: 4px 10px; margin-right: 8px; }
+.input-row { display: flex; gap: 10px; margin-top: 14px; }
+.input-row input { flex: 1; padding: 12px; border: 1px solid #fdba74; border-radius: 12px; background: #fff; }
+.input-row button { padding: 0 18px; border: none; border-radius: 12px; background: #f97316; color: #fff; font-weight: 700; cursor: pointer; box-shadow: 0 4px 12px rgba(249,115,22,0.25); }
+.input-row button:hover { background: #ea580c; }
+.tip { font-size: 12px; color: #a16207; margin-top: 10px; }
 
-.tool-events { margin-top: 8px; }
-.tool-group { border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; background: #fdfdfd; }
-.tool-group-title { font-size: 13px; color: #111827; font-weight: 600; margin-bottom: 12px; }
-.tool-list { display: grid; grid-template-columns: 1fr; gap: 10px; }
-.tool-row { border: 1px solid #e5e7eb; border-radius: 10px; background: #ffffff; padding: 12px; }
+.tool-events { margin-top: 12px; }
+.tool-group { border: 1px solid #fed7aa; border-radius: 14px; padding: 14px; background: #fffaf3; }
+.tool-group-title { font-size: 13px; color: #c2410c; font-weight: 700; margin-bottom: 12px; }
+.tool-list { display: grid; grid-template-columns: 1fr; gap: 12px; }
+.tool-row { border: 1px solid #fed7aa; border-radius: 14px; background: #ffffff; padding: 12px; box-shadow: 0 4px 14px rgba(249,115,22,0.08); }
 .tool-row-head { display: flex; align-items: center; justify-content: space-between; }
-.tool-row-name { font-weight: 600; color: #0f172a; }
-.tool-row-state { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: #374151; }
-.tool-row-toggle { border: 1px solid #e5e7eb; background: #fff; color: #374151; font-size: 12px; border-radius: 8px; padding: 4px 10px; }
-.tool-row-toggle:hover { background: #f9fafb; }
+.tool-row-name { font-weight: 700; color: #0f172a; }
+.tool-row-state { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: #c2410c; }
+.tool-row-toggle { border: 1px solid #fdba74; background: #fff; color: #c2410c; font-size: 12px; border-radius: 12px; padding: 4px 12px; }
+.tool-row-toggle:hover { background: #fff7ed; }
 .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
-.dot-blue { background: #3b82f6; }
-.dot-green { background: #10b981; }
+.dot-blue { background: #60a5fa; }
+.dot-green { background: #f97316; }
 .dot-red { background: #ef4444; }
 .dot-amber { background: #f59e0b; }
-.tool-row-meta { display: flex; gap: 16px; font-size: 12px; color: #6b7280; margin: 8px 0; }
-.tool-row-body { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.tool-pane-title { font-size: 12px; color: #374151; margin-bottom: 6px; }
-.tool-pane-pre { font-size: 12px; line-height: 1.6; background: #fbfbfb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px; }
+.tool-row-meta { display: flex; gap: 18px; font-size: 12px; color: #a16207; margin: 8px 0; }
+.tool-row-body { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.tool-pane-title { font-size: 12px; color: #c2410c; margin-bottom: 6px; }
+.tool-pane-pre { font-size: 12px; line-height: 1.6; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 12px; padding: 10px; }
+
+/* Markdown 内容主题 */
+.md { color: #1f2937; }
+.md h1, .md h2, .md h3 { color: #c2410c; margin: 12px 0 8px; font-weight: 800; }
+.md p { margin: 8px 0; }
+.md ul, .md ol { margin: 8px 0 8px 20px; }
+.md code { background: #fff7ed; border: 1px solid #fed7aa; border-radius: 6px; padding: 2px 6px; }
+.md pre code { display: block; padding: 10px; border-radius: 10px; }
+.md a { color: #f97316; text-decoration: none; }
+.md a:hover { text-decoration: underline; }
 </style>

@@ -92,29 +92,27 @@ async function invokeMCPTool(provider, tool, input) {
       return { result: { key: name, extras } };
     }
     if (full  == "skill.execute") {
-      const s = await loadSkillByName(name);
-      const toolName = String(input?.tool || "tool");
+      const funcName = String(input?.function || "function");
       let run = null;
       try {
-        const mod = await import(
-          /* @vite-ignore */ `../skills/${name}/${toolName}`
-        );
+        const modulePath = (funcName.endsWith(".js") || funcName.includes("/")) ? funcName : `scripts/${funcName}.js`
+        const mod = await import(/* @vite-ignore */ `../skills/${name}/${modulePath}`);
         run = typeof mod?.run === "function" ? mod.run : null;
       } catch {}
       const args = input?.args || {};
       if (run) {
         const output = await Promise.resolve(run(args));
         return {
-          result: { key: name, tool: toolName, args, body: output },
+          result: { key: name, function: funcName, args, body: output },
         };
       } else {
         const err = {
           code: "SKILL_RUN_NOT_FOUND",
-          message: `skill ${name} 没有提供 ${toolName} 可执行脚本`,
-          script: `../skills/${name}/scripts/${toolName}.js`,
+          message: `skill ${name} 没有提供 ${funcName} 可执行脚本`,
+          script: `../skills/${name}/scripts/${funcName}.js`,
         };
         return {
-          result: { key: name, tool: toolName, args, body: null, error: err },
+          result: { key: name, function: funcName, args, body: null, error: err },
         };
       }
     }
@@ -165,10 +163,11 @@ function buildToolSystemJSON(tools) {
     };
   });
   const trigger = {
+    desc: 'skill_tools包含skill.load、skill.loadReference、skill.execute，用于加载技能、加载技能参考、执行技能函数',
     format:
       'CALL_JSONS: [{"provider":"skill","tool":"<load|loadReference|execute>","input":{...}}, ...]',
   };
-  const obj = { messageType: "mcp_tools", tools: items, trigger };
+  const obj = { messageType: "skill_tools", tools: items, trigger };
   return JSON.stringify(obj, null, 2);
 }
 
@@ -301,15 +300,23 @@ async function reasoningLoop(provider, apiKey, baseMessages, runId, onEvent) {
               });
           }
           const loadedKey = String(r.result?.key || "");
-          const loadedFiles = extras
-            .map((ex) => String(ex?.file || ""))
-            .filter(Boolean);
-          otherSummaries.push(
-            `工具(${r.provider}.${r.toolName})加载完成：${JSON.stringify({
-              key: loadedKey,
-              files: loadedFiles,
-            })}`
-          );
+          if (body) {
+            otherSummaries.push(
+              `技能(${loadedKey})的介绍已加载，内容：${clip(body, 200)}`
+            );
+          }
+          for (const ex of extras) {
+            const fname = String(ex?.file || "");
+            const fcontent = String(ex?.content || "");
+            if (fcontent) {
+              otherSummaries.push(
+                `技能(${loadedKey})的参考文件${fname}已加载，内容：${clip(
+                  fcontent,
+                  200
+                )}`
+              );
+            }
+          }
         } else if (r.ok && r.tool.startsWith("skill.loadReference")) {
           const extras = Array.isArray(r.result?.extras) ? r.result.extras : [];
           for (const ex of extras) {
@@ -321,33 +328,39 @@ async function reasoningLoop(provider, apiKey, baseMessages, runId, onEvent) {
                 content: name ? `${name}\n${content}` : content,
               });
           }
-          const loadedFiles = extras
-            .map((ex) => String(ex?.file || ""))
-            .filter(Boolean);
-          otherSummaries.push(
-            `工具(${r.provider}.${r.toolName})加载完成：${JSON.stringify({
-              files: loadedFiles,
-            })}`
-          );
+          for (const ex of extras) {
+            const fname = String(ex?.file || "");
+            const fcontent = String(ex?.content || "");
+            if (fcontent) {
+              otherSummaries.push(
+                `参考文件${fname}已加载，内容：${clip(fcontent, 200)}`
+              );
+            }
+          }
         } else if (r.ok && r.tool.startsWith("skill.execute")) {
           const body = String(r.result?.body || "");
           if (body) skillMsgs.push({ role: "system", content: body });
           const payload = r.result;
-          otherSummaries.push(
-            `工具(${r.provider}.${r.toolName})结果：${JSON.stringify(payload)}`
-          );
-          if (r.result && r.result.error) {
+          const keyName = String(payload?.key || "");
+          const func = String(payload?.function || "未指定");
+          if (payload && payload.error) {
             otherSummaries.push(
-              `工具(${r.provider}.${r.toolName})异常：${JSON.stringify(
-                r.result.error
+              `技能(${keyName})的工具${func}执行失败：${String(
+                payload.error?.message || "未知错误"
               )}`
+            );
+          } else {
+            const out = String(body || "");
+            otherSummaries.push(
+              `技能(${keyName})的工具${func}已执行，结果：${clip(out, 200)}`
             );
           }
         } else {
-          const payload = r.ok ? r.result : { error: r.error };
-          otherSummaries.push(
-            `工具(${r.provider}.${r.toolName})结果：${JSON.stringify(payload)}`
-          );
+          if (!r.ok) {
+            otherSummaries.push(
+              `工具(${r.provider}.${r.toolName})执行失败：${String(r.error)}`
+            );
+          }
         }
       }
       messages = [
@@ -504,15 +517,23 @@ async function reasoningLoop(provider, apiKey, baseMessages, runId, onEvent) {
               });
           }
           const loadedKey = String(r.result?.key || "");
-          const loadedFiles = extras
-            .map((ex) => String(ex?.file || ""))
-            .filter(Boolean);
-          otherSummaries.push(
-            `工具(${r.provider}.${r.toolName})加载完成：${JSON.stringify({
-              key: loadedKey,
-              files: loadedFiles,
-            })}`
-          );
+          if (body) {
+            otherSummaries.push(
+              `技能(${loadedKey})的介绍已加载，内容：${clip(body, 200)}`
+            );
+          }
+          for (const ex of extras) {
+            const fname = String(ex?.file || "");
+            const fcontent = String(ex?.content || "");
+            if (fcontent) {
+              otherSummaries.push(
+                `技能(${loadedKey})的参考文件${fname}已加载，内容：${clip(
+                  fcontent,
+                  200
+                )}`
+              );
+            }
+          }
         } else if (r.ok && r.tool.startsWith("skill.loadReference")) {
           const extras = Array.isArray(r.result?.extras) ? r.result.extras : [];
           for (const ex of extras) {
@@ -524,33 +545,39 @@ async function reasoningLoop(provider, apiKey, baseMessages, runId, onEvent) {
                 content: name ? `${name}\n${content}` : content,
               });
           }
-          const loadedFiles = extras
-            .map((ex) => String(ex?.file || ""))
-            .filter(Boolean);
-          otherSummaries.push(
-            `工具(${r.provider}.${r.toolName})加载完成：${JSON.stringify({
-              files: loadedFiles,
-            })}`
-          );
+          for (const ex of extras) {
+            const fname = String(ex?.file || "");
+            const fcontent = String(ex?.content || "");
+            if (fcontent) {
+              otherSummaries.push(
+                `参考文件${fname}已加载，内容：${clip(fcontent, 200)}`
+              );
+            }
+          }
         } else if (r.ok && r.tool.startsWith("skill.execute")) {
           const body = String(r.result?.body || "");
           if (body) skillMsgs.push({ role: "assistant", content: body });
           const payload = r.result;
-          otherSummaries.push(
-            `工具(${r.provider}.${r.toolName})结果：${JSON.stringify(payload)}`
-          );
-          if (r.result && r.result.error) {
+          const keyName = String(payload?.key || "");
+          const toolName = String(payload?.tool || r.toolName || "");
+          if (payload && payload.error) {
             otherSummaries.push(
-              `工具(${r.provider}.${r.toolName})异常：${JSON.stringify(
-                r.result.error
+              `技能(${keyName})的工具${toolName}执行失败：${String(
+                payload.error?.message || "未知错误"
               )}`
+            );
+          } else {
+            const out = String(body || "");
+            otherSummaries.push(
+              `技能(${keyName})的工具${toolName}已执行，结果：${clip(out, 200)}`
             );
           }
         } else {
-          const payload = r.ok ? r.result : { error: r.error };
-          otherSummaries.push(
-            `工具(${r.provider}.${r.toolName})结果：${JSON.stringify(payload)}`
-          );
+          if (!r.ok) {
+            otherSummaries.push(
+              `工具(${r.provider}.${r.toolName})执行失败：${String(r.error)}`
+            );
+          }
         }
       }
       messages = [
@@ -628,16 +655,16 @@ export async function runAgentBrowser(userInput, options = {}, onEvent) {
         type: "object",
         properties: {
           skill: { type: "string", enum: skills.map((s) => s.key) },
-          tool: { type: "string", description: "脚本文件名" },
+          function: { type: "string", description: "函数文件名" },
           args: { type: "object", description: "脚本入参对象" },
         },
-        required: ["skill", "tool"],
+        required: ["skill", "function"],
       },
       outputSchema: {
         type: "object",
         properties: {
           key: { type: "string" },
-          tool: { type: "string" },
+          function: { type: "string" },
           args: { type: "object" },
           body: { type: "string" },
           result: { type: "object" },

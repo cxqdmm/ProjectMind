@@ -46,10 +46,4 @@ description: 用于中文诗歌创作（现代诗/五绝/七绝/词），支持�
 - 信息不足：先澄清主题或体裁后再生成
 - 生成失败：提示更明确的约束（目标意象与韵脚字样）
 - 质量不佳：参考写作要点与范例，强化意象与节奏
-- 脚本参数约定（若需约束计算）：
-- constraints（scripts/constraints.js）
-  - args.theme：主题，字符串，必填
-  - args.form：体裁，枚举 { wujue, qijue, wulv, qilv }，默认 qijue
-  - args.style：风格，字符串，可选
-  - args.acrostic：藏头词，字符串，可选
-  - args.rhyme：韵脚偏好，字符串或枚举，可选
+
