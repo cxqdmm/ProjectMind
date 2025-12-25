@@ -91,6 +91,8 @@ function scrollToBottom() {
   })
 }
 
+marked.setOptions({ gfm: true, breaks: true })
+
 function formatJSON(v) {
   try { return JSON.stringify(v ?? {}, null, 2) } catch (_) { return String(v) }
 }
@@ -257,7 +259,7 @@ onMounted(() => {
     sessionId.value = `pm_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
     localStorage.setItem('pm_session_id', sessionId.value)
   }
-  addMessage('assistant', '你好！我可以帮助你了解产品信息或解答常见客诉问题。试着问我：\n- “ProjectMind Pro 的价格和主要功能？”\n- “如何申请退款？”')
+  addMessage('assistant', '你好！我是智能助手，可以帮助你解决问题。\n\n请输入你的需求开始吧。')
 })
 
 function onApiKeyChange() {
@@ -279,6 +281,7 @@ function onApiKeyChange() {
 .user .role { color: #1d4ed8; }
 .assistant .role { color: #f97316; }
 .content pre { white-space: pre-wrap; line-height: 1.6; margin: 0; font-size: 14px; }
+.content { text-align: left; }
 .citations { font-size: 12px; color: #a16207; margin-top: 8px; }
 .citation-item { display: inline-block; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 999px; padding: 4px 10px; margin-right: 8px; }
 .input-row { display: flex; gap: 10px; margin-top: 14px; }
@@ -309,11 +312,26 @@ function onApiKeyChange() {
 
 /* Markdown 内容主题 */
 .md { color: #1f2937; }
+.md { text-align: left; }
+.md * { text-align: left; }
 .md h1, .md h2, .md h3 { color: #c2410c; margin: 12px 0 8px; font-weight: 800; }
+.md h1 { font-size: 22px; }
+.md h2 { font-size: 18px; }
+.md h3 { font-size: 16px; }
 .md p { margin: 8px 0; }
-.md ul, .md ol { margin: 8px 0 8px 20px; }
+.md ul, .md ol { margin: 8px 0 8px 20px; padding-left: 20px; }
+.md ul { list-style: disc; }
+.md ol { list-style: decimal; }
+.md li { margin: 4px 0; }
 .md code { background: #fff7ed; border: 1px solid #fed7aa; border-radius: 6px; padding: 2px 6px; }
 .md pre code { display: block; padding: 10px; border-radius: 10px; }
 .md a { color: #f97316; text-decoration: none; }
 .md a:hover { text-decoration: underline; }
+.md blockquote { margin: 10px 0; padding: 10px 12px; border-left: 4px solid #f59e0b; background: #fffaf3; color: #7c2d12; border-radius: 8px; }
+.md hr { border: none; border-top: 1px dashed #fdba74; margin: 12px 0; }
+.md table { border-collapse: collapse; margin: 10px 0; width: 100%; }
+.md th, .md td { border: 1px solid #fed7aa; padding: 8px; }
+.md th { background: #fff7ed; color: #c2410c; font-weight: 700; }
+.md img { max-width: 100%; border-radius: 10px; border: 1px solid #fed7aa; }
+.md center { text-align: left; display: block; }
 </style>
