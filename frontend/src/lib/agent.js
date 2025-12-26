@@ -163,9 +163,9 @@ function buildToolSystemJSON(tools) {
     };
   });
   const trigger = {
-    desc: 'skill_tools包含skill.load、skill.loadReference、skill.execute，用于加载技能、加载技能参考、执行技能函数',
+    desc: 'skill_tools包含skill.load、skill.loadReference用于加载技能、加载技能参数',
     format:
-      'CALL_JSONS: [{"provider":"skill","tool":"<load|loadReference|execute>","input":{...}}, ...]',
+      'CALL_JSONS: [{"provider":"skill","tool":"<load|loadReference>","input":{...}}, ...]',
   };
   const obj = { messageType: "skill_tools", tools: items, trigger };
   return JSON.stringify(obj, null, 2);
@@ -183,198 +183,6 @@ async function reasoningLoop(provider, apiKey, baseMessages, runId, onEvent) {
   let reply = "";
   let toolCalls = 0;
   const events = [];
-  try {
-    // 步0：支持用户消息中直接包含 CALL_JSONS，先执行一次
-    const lastMsg = messages[messages.length - 1];
-    const primCalls = parseToolCalls(lastMsg?.content || "");
-    if (primCalls.length > 0) {
-      const ts = Date.now();
-      const callsWithId = primCalls.map((c, i) => ({
-        ...c,
-        id: `t${ts.toString(36)}${Math.random().toString(36).slice(2, 6)}${i}`,
-        startedAt: ts,
-      }));
-      // 事件：开始执行工具
-      const startEvent = {
-        messageType: "tool_calls",
-        runId,
-        step: 0,
-        timestamp: ts,
-        calls: callsWithId.map((c) => ({
-          id: c.id,
-          provider: c.provider,
-          tool: c.tool,
-          toolName: c.toolName,
-          name: c.toolName ? `${c.provider}.${c.toolName}` : c.tool,
-          status: "started",
-          inputPreview: clip(JSON.stringify(c.input), 300),
-          startedAt: c.startedAt,
-          render: { variant: "card", progress: true, collapsible: true },
-        })),
-      };
-      events.push(startEvent);
-      if (onEvent)
-        try {
-          onEvent(startEvent);
-        } catch {}
-      const results = await Promise.all(
-        callsWithId.map(async (c) => {
-          const startedAt = Date.now();
-          try {
-            const inv = await invokeMCPTool(c.provider, c.tool, c.input);
-            const toolResult = inv?.result ?? inv;
-            const completedAt = Date.now();
-            // 事件：工具完成，包含预览
-            const evt = {
-              messageType: "tool_update",
-              runId,
-              step: 0,
-              timestamp: completedAt,
-              id: c.id,
-              provider: c.provider,
-              tool: c.tool,
-              toolName: c.toolName,
-              name: c.toolName ? `${c.provider}.${c.toolName}` : c.tool,
-              status: "completed",
-              result: toolResult,
-              preview: clip(JSON.stringify(toolResult), 500),
-              startedAt,
-              completedAt,
-              durationMs: completedAt - c.startedAt,
-              render: { badge: "success" },
-            };
-            events.push(evt);
-            if (onEvent)
-              try {
-                onEvent(evt);
-              } catch {}
-            return { ...c, ok: true, result: toolResult };
-          } catch (e) {
-            const completedAt = Date.now();
-            const errPayload = {
-              code: "TOOL_ERROR",
-              message: String(e?.message || e),
-            };
-            // 事件：工具失败
-            const evt = {
-              messageType: "tool_update",
-              runId,
-              step: 0,
-              timestamp: completedAt,
-              id: c.id,
-              provider: c.provider,
-              tool: c.tool,
-              toolName: c.toolName,
-              name: c.toolName ? `${c.provider}.${c.toolName}` : c.tool,
-              status: "failed",
-              error: errPayload,
-              startedAt,
-              completedAt,
-              durationMs: completedAt - c.startedAt,
-              render: { badge: "error" },
-            };
-            events.push(evt);
-            if (onEvent)
-              try {
-                onEvent(evt);
-              } catch {}
-            return { ...c, ok: false, error: errPayload.message };
-          }
-        })
-      );
-      // 将技能正文与资源注入到系统消息，其它工具结果以摘要形式反馈
-      const skillMsgs = [];
-      const otherSummaries = [];
-      for (const r of results) {
-        if (r.ok && r.tool.startsWith("skill.load")) {
-          const body = String(r.result?.body || "");
-          const extras = Array.isArray(r.result?.extras) ? r.result.extras : [];
-          if (body) skillMsgs.push({ role: "system", content: body });
-          for (const ex of extras) {
-            const name = String(ex?.file || "");
-            const content = String(ex?.content || "");
-            if (content)
-              skillMsgs.push({
-                role: "system",
-                content: name ? `${name}\n${content}` : content,
-              });
-          }
-          const loadedKey = String(r.result?.key || "");
-          if (body) {
-            otherSummaries.push(
-              `技能(${loadedKey})的介绍已加载，内容：${clip(body, 200)}`
-            );
-          }
-          for (const ex of extras) {
-            const fname = String(ex?.file || "");
-            const fcontent = String(ex?.content || "");
-            if (fcontent) {
-              otherSummaries.push(
-                `技能(${loadedKey})的参考文件${fname}已加载，内容：${clip(
-                  fcontent,
-                  200
-                )}`
-              );
-            }
-          }
-        } else if (r.ok && r.tool.startsWith("skill.loadReference")) {
-          const extras = Array.isArray(r.result?.extras) ? r.result.extras : [];
-          for (const ex of extras) {
-            const name = String(ex?.file || "");
-            const content = String(ex?.content || "");
-            if (content)
-              skillMsgs.push({
-                role: "system",
-                content: name ? `${name}\n${content}` : content,
-              });
-          }
-          for (const ex of extras) {
-            const fname = String(ex?.file || "");
-            const fcontent = String(ex?.content || "");
-            if (fcontent) {
-              otherSummaries.push(
-                `参考文件${fname}已加载，内容：${clip(fcontent, 200)}`
-              );
-            }
-          }
-        } else if (r.ok && r.tool.startsWith("skill.execute")) {
-          const body = String(r.result?.body || "");
-          if (body) skillMsgs.push({ role: "system", content: body });
-          const payload = r.result;
-          const keyName = String(payload?.key || "");
-          const func = String(payload?.function || "未指定");
-          if (payload && payload.error) {
-            otherSummaries.push(
-              `技能(${keyName})的工具${func}执行失败：${String(
-                payload.error?.message || "未知错误"
-              )}`
-            );
-          } else {
-            const out = String(body || "");
-            otherSummaries.push(
-              `技能(${keyName})的工具${func}已执行，结果：${clip(out, 200)}`
-            );
-          }
-        } else {
-          if (!r.ok) {
-            otherSummaries.push(
-              `工具(${r.provider}.${r.toolName})执行失败：${String(r.error)}`
-            );
-          }
-        }
-      }
-      messages = [
-        ...messages,
-        ...skillMsgs,
-        ...(otherSummaries.length
-          ? [{ role: "assistant", content: otherSummaries.join("\n") }]
-          : []),
-      ];
-      toolCalls += primCalls.length;
-      reply = otherSummaries.join("\n");
-      return { reply, messages, toolCalls, steps: 0, events };
-    }
-  } catch {}
   // 步1..N：逐步推理；每步检查是否有新工具调用（仅支持 CALL_JSONS）
   let step = 1;
   while (true) {
@@ -646,36 +454,36 @@ export async function runAgentBrowser(userInput, options = {}, onEvent) {
         properties: { key: { type: "string" }, extras: { type: "array" } },
       },
     };
-    const skillExecTool = {
-      provider: "skill",
-      tool: "execute",
-      name: "skill.execute",
-      description: "执行技能并返回技能正文与结果；用于生成约束或确定性计算",
-      inputSchema: {
-        type: "object",
-        properties: {
-          skill: { type: "string", enum: skills.map((s) => s.key) },
-          function: { type: "string", description: "函数文件名" },
-          args: { type: "object", description: "脚本入参对象" },
-        },
-        required: ["skill", "function"],
-      },
-      outputSchema: {
-        type: "object",
-        properties: {
-          key: { type: "string" },
-          function: { type: "string" },
-          args: { type: "object" },
-          body: { type: "string" },
-          result: { type: "object" },
-        },
-      },
-    };
+    // const skillExecTool = {
+    //   provider: "skill",
+    //   tool: "execute",
+    //   name: "skill.execute",
+    //   description: "执行技能并返回技能正文与结果；用于生成约束或确定性计算",
+    //   inputSchema: {
+    //     type: "object",
+    //     properties: {
+    //       skill: { type: "string", enum: skills.map((s) => s.key) },
+    //       function: { type: "string", description: "函数文件名" },
+    //       args: { type: "object", description: "脚本入参对象" },
+    //     },
+    //     required: ["skill", "function"],
+    //   },
+    //   outputSchema: {
+    //     type: "object",
+    //     properties: {
+    //       key: { type: "string" },
+    //       function: { type: "string" },
+    //       args: { type: "object" },
+    //       body: { type: "string" },
+    //       result: { type: "object" },
+    //     },
+    //   },
+    // };
     payload.tools = [
       ...(payload.tools || []),
       skillTool,
       skillLoadRefTool,
-      skillExecTool,
+      // skillExecTool,
     ];
   } catch {}
   // 读取 LLM 配置并实例化 provider
@@ -726,6 +534,7 @@ export async function runAgentBrowser(userInput, options = {}, onEvent) {
     steps,
     events,
   } = await reasoningLoop(provider, apiKey, messages, runId, onEvent);
+  debugger
   const baseLen = messages.length;
   const newSegments = (finalMessages || [])
     .slice(baseLen)

@@ -31,14 +31,14 @@
                 <div class="tool-list">
                   <div v-for="call in batch.calls" :key="call.id" class="tool-row">
                     <div class="tool-row-head">
-                      <span class="tool-row-name">{{ toolLabel(call) }}</span>
+                      <span class="tool-row-name">{{ callTitle(call) }}</span>
                       <span class="tool-row-state">
                         <i :class="stateDotClass(call.status)"></i>
                         {{ statusText(call.status) }}
                       </span>
                       <button class="tool-row-toggle" @click="toggleTool(call.id)">{{ isOpen(call.id) ? '收起' : '展开' }}</button>
                     </div>
-                    <div class="tool-row-meta">
+                    <div class="tool-row-meta" v-if="false">
                       <span v-if="call.startedAt">开始 {{ formatTime(call.startedAt) }}</span>
                       <span v-if="call.completedAt">结束 {{ formatTime(call.completedAt) }}</span>
                       <span v-if="call.durationMs">耗时 {{ formatDuration(call.durationMs) }}</span>
@@ -172,6 +172,30 @@ function buildToolView(events) {
   return out
 }
 
+function callTitle(x) {
+  const provider = String(x?.provider || '').trim()
+  const tool = String(x?.toolName || x?.tool || '').trim()
+  if (provider === 'skill') {
+    // Prefer final result details
+    const r = x?.result || {}
+    const key = String(r?.key || x?.input?.skill || '')
+    if (tool.startsWith('execute')) {
+      const fn = String(r?.function || x?.input?.function || '')
+      return fn ? `skill.execute · ${key ? 'skill=' + key + ' · ' : ''}function=${fn}` : `skill.execute${key ? ' · skill=' + key : ''}`
+    }
+    if (tool.startsWith('loadReference')) {
+      const files = Array.isArray(r?.extras) ? r.extras.map(e => e.file).filter(Boolean) : (Array.isArray(x?.input?.files) ? x.input.files : (x?.input?.file ? [x.input.file] : []))
+      const filesText = files && files.length ? `files=${files.join(',')}` : ''
+      return `skill.loadReference${filesText ? ' · ' + filesText : ''}${key ? ' · skill=' + key : ''}`
+    }
+    if (tool.startsWith('load')) {
+      return `skill.load${key ? ' · skill=' + key : ''}`
+    }
+  }
+  // Fallback
+  return tool ? `${provider}.${tool}` : (x?.name || '未知工具')
+}
+
 function toolLabel(x) {
   const p = String(x?.provider || '').trim()
   const t = String(x?.toolName || x?.tool || '').trim()
@@ -295,10 +319,10 @@ function onApiKeyChange() {
 .tool-group-title { font-size: 13px; color: #c2410c; font-weight: 700; margin-bottom: 12px; }
 .tool-list { display: grid; grid-template-columns: 1fr; gap: 12px; }
 .tool-row { border: 1px solid #fed7aa; border-radius: 14px; background: #ffffff; padding: 12px; box-shadow: 0 4px 14px rgba(249,115,22,0.08); }
-.tool-row-head { display: flex; align-items: center; justify-content: space-between; }
-.tool-row-name { font-weight: 700; color: #0f172a; }
-.tool-row-state { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: #c2410c; }
-.tool-row-toggle { border: 1px solid #fdba74; background: #fff; color: #c2410c; font-size: 12px; border-radius: 12px; padding: 4px 12px; }
+.tool-row-head { display: flex; align-items: center; gap: 10px; }
+.tool-row-name { font-weight: 400; color: #0f172a; font-size: 13px; }
+.tool-row-state { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: #c2410c; margin-left: auto; text-align: right; }
+.tool-row-toggle { border: 1px solid #fdba74; background: #fff; color: #c2410c; font-size: 11px; border-radius: 12px; padding: 3px 10px; }
 .tool-row-toggle:hover { background: #fff7ed; }
 .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
 .dot-blue { background: #60a5fa; }

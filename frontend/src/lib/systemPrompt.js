@@ -2,7 +2,7 @@ export const SYS_REASONING_MSG = `
 遵循技能范式的渐进披露：
 - 仅在相关时使用 skill.load 读取技能的 SKILL.md 正文
 - 按需使用 skill.loadReference 载入技能参考文件文本；引用路径统一使用 "references/<name>.md"
-- 当识别出需要执行技能的脚本时，使用 skill.execute 并遵循脚本入参约定：tool 为脚本文件名（scripts/<tool>.js），args 为脚本入参对象，具体参数与约束以该技能的 SKILL.md 为准
+- 当技能描述中包含技能函数的定义时，当判断需要执行该技能函数时，使用 skill.execute 执行该函数"scripts/<functionName>.js"
   - 严格约束：所有 skill.execute 的脚本必须在该技能的 SKILL.md 中明确列出，禁止自行臆造脚本名称；
 
 读取技能信息的约定：
