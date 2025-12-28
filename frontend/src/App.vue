@@ -1,20 +1,28 @@
 <template>
   <div class="app">
     <header class="header">
-      <h1>智能助手</h1>
-      <p class="subtitle">产品咨询与客诉问题最小可用骨架</p>
-      <div class="settings">
-        <label>
-          Qwen API Key:
-          <input v-model.trim="apiKey" @change="onApiKeyChange" type="password" placeholder="在此粘贴密钥" />
-        </label>
+      <div class="header-inner">
+        <h1>智能助手</h1>
+        <div class="settings">
+          <label>
+            Qwen API Key
+            <input v-model.trim="apiKey" @change="onApiKeyChange" type="password" placeholder="粘贴密钥" />
+          </label>
+        </div>
       </div>
     </header>
 
     <main class="main">
       <div class="messages" ref="messagesRef">
         <div v-for="(m, idx) in messages" :key="idx" class="message" :class="m.role">
-          <div class="role">{{ m.role === 'user' ? '你' : '助手' }}</div>
+          <div class="role">
+            <template v-if="m.role === 'assistant'">
+              <svg class="role-icon" viewBox="0 0 24 24" width="20" height="20" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M12 2a7 7 0 0 0-7 7v3a5 5 0 0 0 5 5h1v2a1 1 0 0 0 1.6.8l3.4-2.6H17a5 5 0 0 0 5-5V9a7 7 0 0 0-7-7zm-3 9a1.5 1.5 0 1 1 3 0a1.5 1.5 0 1 1-3 0zm5 0a1.5 1.5 0 1 1 3 0a1.5 1.5 0 1 1-3 0z"/>
+              </svg>
+            </template>
+            <template v-else>你</template>
+          </div>
           <div class="content">
             <div v-if="m.role === 'assistant'" class="md" v-html="renderMarkdown(m.content)"></div>
             <pre v-else>{{ m.content }}</pre>
@@ -62,10 +70,9 @@
       </div>
 
       <form class="input-row" @submit.prevent="onSend">
-        <input v-model.trim="input" type="text" placeholder="例如：ProjectMind Pro 的价格？或 如何申请退款？" />
+        <input v-model.trim="input" type="text" placeholder="请输入问题或指令" />
         <button type="submit" :disabled="sending">{{ sending ? '发送中...' : '发送' }}</button>
       </form>
-      <p class="tip">前端直接调用模型与工具，后台可选。</p>
     </main>
   </div>
 </template>
@@ -292,70 +299,59 @@ function onApiKeyChange() {
 </script>
 
 <style scoped>
-.app { color: #1f2937; background: #fff7ed; min-height: 100vh;}
-.header { background: linear-gradient(135deg,#fb923c 0%, #f97316 70%); color: #fff; padding: 28px 20px; }
-.header h1 { margin: 0; font-size: 24px; letter-spacing: 0.2px; }
-.subtitle { color: #ffedd5; margin-top: 6px; }
-.settings { margin-top: 12px; display: flex; align-items: center; gap: 10px; }
-.settings input { padding: 8px 10px; border: 1px solid #fdba74; border-radius: 10px; background: #fff7ed; color: #7c2d12; }
-.main { margin: 0 auto; padding: 20px; }
-.messages { background: #ffffff; border: 1px solid #fed7aa; border-radius: 14px; padding: 16px; min-height: 360px; max-height: 70vh; overflow-y: auto; box-shadow: 0 6px 20px rgba(249,115,22,0.12); }
-.message { display: flex; gap: 14px; margin-bottom: 14px; }
-.role { font-weight: 700; min-width: 64px; }
-.user .role { color: #1d4ed8; }
-.assistant .role { color: #f97316; }
-.content pre { white-space: pre-wrap; line-height: 1.6; margin: 0; font-size: 14px; }
-.content { text-align: left; }
-.citations { font-size: 12px; color: #a16207; margin-top: 8px; }
-.citation-item { display: inline-block; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 999px; padding: 4px 10px; margin-right: 8px; }
-.input-row { display: flex; gap: 10px; margin-top: 14px; }
-.input-row input { flex: 1; padding: 12px; border: 1px solid #fdba74; border-radius: 12px; background: #fff; }
-.input-row button { padding: 0 18px; border: none; border-radius: 12px; background: #f97316; color: #fff; font-weight: 700; cursor: pointer; box-shadow: 0 4px 12px rgba(249,115,22,0.25); }
-.input-row button:hover { background: #ea580c; }
-.tip { font-size: 12px; color: #a16207; margin-top: 10px; }
+.app { color: #0f172a; background: #ffffff; min-height: 100vh; }
+.header { position: sticky; top: 0; background: #ffffff; border-bottom: 1px solid #e5e7eb; z-index: 10; }
+.header-inner { max-width: 960px; margin: 0 auto; padding: 12px 20px; display: flex; align-items: center; gap: 12px; }
+.header h1 { margin: 0; font-size: 16px; font-weight: 700; }
+.settings { margin-left: auto; display: flex; align-items: center; gap: 8px; color: #475569; }
+.settings input { padding: 8px 10px; border: 1px solid #e5e7eb; border-radius: 10px; background: #ffffff; color: #0f172a; }
+.main { margin: 0 auto; padding: 0 20px 120px; }
+.messages { max-width: 820px; margin: 24px auto; background: transparent; border: none; border-radius: 0; padding: 0; min-height: 60vh; max-height: none; overflow: visible; box-shadow: none; }
+.message { display: flex; align-items: flex-start; gap: 14px; margin: 28px auto; max-width: 720px; }
+.role { font-weight: 600; min-width: 28px; color: #64748b; display: flex; align-items: flex-start; }
+.role-icon { fill: #0ea5e9; width: 20px; height: 20px; }
+.assistant .role { color: #0ea5e9; }
+.content { text-align: left; flex: 1; }
+.content pre { white-space: pre-wrap; line-height: 1.8; margin: 0; font-size: 14px; }
+.user .content pre { background: #f1f5f9; border: 1px solid #e5e7eb; border-radius: 18px; padding: 10px 14px; display: inline-block; max-width: 60%; margin-left: auto; }
+.md { color: #0f172a; text-align: left; }
+.md :deep(h1), .md :deep(h2), .md :deep(h3) { color: #0f172a; margin: 12px 0 8px; font-weight: 700; }
+.md :deep(h1) { font-size: 20px; }
+.md :deep(h2) { font-size: 18px; }
+.md :deep(h3) { font-size: 16px; }
+.md :deep(p) { margin: 0; }
+.md :deep(ul), .md :deep(ol) { margin: 8px 0 8px 20px; padding-left: 20px; }
+.md :deep(ul) { list-style: disc; }
+.md :deep(ol) { list-style: decimal; }
+.md :deep(li) { margin: 6px 0; }
+.md :deep(code) { background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 6px; padding: 2px 6px; }
+.md :deep(pre code) { display: block; padding: 10px; border-radius: 10px; }
+.md :deep(a) { color: #0ea5e9; text-decoration: none; }
+.md :deep(a:hover) { text-decoration: underline; }
+.md :deep(blockquote) { margin: 10px 0; padding: 10px 12px; border-left: 4px solid #e5e7eb; background: #f8fafc; color: #334155; border-radius: 8px; }
 
-.tool-events { margin-top: 12px; }
-.tool-group { border: 1px solid #fed7aa; border-radius: 14px; padding: 14px; background: #fffaf3; }
-.tool-group-title { font-size: 13px; color: #c2410c; font-weight: 700; margin-bottom: 12px; }
+.tool-events { max-width: 720px; margin: 12px auto; }
+.tool-group { border: 1px solid #e5e7eb; border-radius: 14px; padding: 14px; background: #ffffff; }
+.tool-group-title { font-size: 13px; color: #475569; font-weight: 700; margin-bottom: 12px; }
 .tool-list { display: grid; grid-template-columns: 1fr; gap: 12px; }
-.tool-row { border: 1px solid #fed7aa; border-radius: 14px; background: #ffffff; padding: 12px; box-shadow: 0 4px 14px rgba(249,115,22,0.08); }
+.tool-row { border: 1px solid #e5e7eb; border-radius: 14px; background: #ffffff; padding: 12px; box-shadow: 0 2px 10px rgba(17,24,39,0.06); }
 .tool-row-head { display: flex; align-items: center; gap: 10px; }
 .tool-row-name { font-weight: 400; color: #0f172a; font-size: 13px; }
-.tool-row-state { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: #c2410c; margin-left: auto; text-align: right; }
-.tool-row-toggle { border: 1px solid #fdba74; background: #fff; color: #c2410c; font-size: 11px; border-radius: 12px; padding: 3px 10px; }
-.tool-row-toggle:hover { background: #fff7ed; }
+.tool-row-state { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: #64748b; margin-left: auto; text-align: right; }
+.tool-row-toggle { border: 1px solid #e5e7eb; background: #fff; color: #475569; font-size: 11px; border-radius: 12px; padding: 3px 10px; }
+.tool-row-toggle:hover { background: #f8fafc; }
 .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
 .dot-blue { background: #60a5fa; }
-.dot-green { background: #f97316; }
+.dot-green { background: #22c55e; }
 .dot-red { background: #ef4444; }
 .dot-amber { background: #f59e0b; }
-.tool-row-meta { display: flex; gap: 18px; font-size: 12px; color: #a16207; margin: 8px 0; }
+.tool-row-meta { display: flex; gap: 18px; font-size: 12px; color: #64748b; margin: 8px 0; }
 .tool-row-body { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-.tool-pane-title { font-size: 12px; color: #c2410c; margin-bottom: 6px; }
-.tool-pane-pre { font-size: 12px; line-height: 1.6; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 12px; padding: 10px; }
+.tool-pane-title { font-size: 12px; color: #64748b; margin-bottom: 6px; }
+.tool-pane-pre { font-size: 12px; line-height: 1.6; background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 12px; padding: 10px; }
 
-/* Markdown 内容主题 */
-.md { color: #1f2937; }
-.md { text-align: left; }
-.md * { text-align: left; }
-.md h1, .md h2, .md h3 { color: #c2410c; margin: 12px 0 8px; font-weight: 800; }
-.md h1 { font-size: 22px; }
-.md h2 { font-size: 18px; }
-.md h3 { font-size: 16px; }
-.md p { margin: 8px 0; }
-.md ul, .md ol { margin: 8px 0 8px 20px; padding-left: 20px; }
-.md ul { list-style: disc; }
-.md ol { list-style: decimal; }
-.md li { margin: 4px 0; }
-.md code { background: #fff7ed; border: 1px solid #fed7aa; border-radius: 6px; padding: 2px 6px; }
-.md pre code { display: block; padding: 10px; border-radius: 10px; }
-.md a { color: #f97316; text-decoration: none; }
-.md a:hover { text-decoration: underline; }
-.md blockquote { margin: 10px 0; padding: 10px 12px; border-left: 4px solid #f59e0b; background: #fffaf3; color: #7c2d12; border-radius: 8px; }
-.md hr { border: none; border-top: 1px dashed #fdba74; margin: 12px 0; }
-.md table { border-collapse: collapse; margin: 10px 0; width: 100%; }
-.md th, .md td { border: 1px solid #fed7aa; padding: 8px; }
-.md th { background: #fff7ed; color: #c2410c; font-weight: 700; }
-.md img { max-width: 100%; border-radius: 10px; border: 1px solid #fed7aa; }
-.md center { text-align: left; display: block; }
+.input-row { position: fixed; left: 50%; transform: translateX(-50%); bottom: 24px; width: min(820px, calc(100% - 48px)); display: flex; gap: 10px; background: #ffffff; border: 1px solid #e5e7eb; border-radius: 999px; padding: 8px; box-shadow: 0 12px 28px rgba(17,24,39,0.08); }
+.input-row input { flex: 1; padding: 12px 14px; border: none; outline: none; background: transparent; }
+.input-row button { padding: 0 18px; border: none; border-radius: 999px; background: #111827; color: #fff; font-weight: 700; cursor: pointer; }
+.input-row button:hover { background: #0f172a; }
 </style>
