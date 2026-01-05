@@ -18,47 +18,48 @@
             </template>
             <template v-else>你</template>
           </div>
-          <div class="content">
-            <div v-if="m.role === 'assistant'" class="md" v-html="renderMarkdown(m.content)"></div>
-            <pre v-else>{{ m.content }}</pre>
-            <div v-if="m.citations?.length" class="citations">
-              引用：
-              <span v-for="(c, i) in m.citations" :key="i" class="citation-item" :title="c.snippet || ''">
-                {{ c.title }} · {{ c.source }}
-              </span>
-            </div>
-
-            <div v-if="m.events?.length" class="tool-events">
-              <div v-for="(batch, bi) in buildToolView(m.events)" :key="bi" class="tool-group">
-                <div class="tool-group-title">函数批次 · {{ batch.calls.length }} 个调用</div>
-                <div class="tool-list">
-                  <div v-for="call in batch.calls" :key="call.id" class="tool-row">
-                    <div class="tool-row-head">
-                      <span class="tool-row-name">{{ callTitle(call) }}</span>
-                      <span class="tool-row-state">
-                        <i :class="stateDotClass(call.status)"></i>
-                        {{ statusText(call.status) }}
-                      </span>
-                      <button class="tool-row-toggle" @click="toggleTool(call.id)">{{ isOpen(call.id) ? '收起' : '展开' }}</button>
-                    </div>
-                    <div class="tool-row-meta" v-if="false">
-                      <span v-if="call.startedAt">开始 {{ formatTime(call.startedAt) }}</span>
-                      <span v-if="call.completedAt">结束 {{ formatTime(call.completedAt) }}</span>
-                      <span v-if="call.durationMs">耗时 {{ formatDuration(call.durationMs) }}</span>
-                    </div>
-                    <div class="tool-row-body" v-show="isOpen(call.id)">
-                      <div class="tool-pane">
-                        <div class="tool-pane-title">输入</div>
-                        <pre class="tool-pane-pre">{{ formatJSON(call.inputPreview || call.input || {}) }}</pre>
+        <div class="content">
+            <template v-for="(part, pi) in m.content" :key="pi">
+              <div v-if="part?.type === 'text' && m.role === 'assistant'" class="md" v-html="renderMarkdown(String(part?.text || ''))"></div>
+              <pre v-else-if="part?.type === 'text'">{{ String(part?.text || '') }}</pre>
+              <div v-else-if="part?.type === 'tool_calls'" class="tool-events">
+                <div v-for="(batch, bi) in buildBatchForItem(m, part)" :key="bi" class="tool-group">
+                  <div class="tool-group-title">函数批次 · {{ batch.calls.length }} 个调用</div>
+                  <div class="tool-list">
+                    <div v-for="call in batch.calls" :key="call.id" class="tool-row">
+                      <div class="tool-row-head">
+                        <span class="tool-row-name">{{ callTitle(call) }}</span>
+                        <span class="tool-row-state">
+                          <i :class="stateDotClass(call.status)"></i>
+                          {{ statusText(call.status) }}
+                        </span>
+                        <button class="tool-row-toggle" @click="toggleTool(call.id)">{{ isOpen(call.id) ? '收起' : '展开' }}</button>
                       </div>
-                      <div class="tool-pane">
-                        <div class="tool-pane-title">输出</div>
-                        <pre class="tool-pane-pre">{{ call.error ? String(call.error) : formatJSON(call.result) }}</pre>
+                      <div class="tool-row-meta" v-if="false">
+                        <span v-if="call.startedAt">开始 {{ formatTime(call.startedAt) }}</span>
+                        <span v-if="call.completedAt">结束 {{ formatTime(call.completedAt) }}</span>
+                        <span v-if="call.durationMs">耗时 {{ formatDuration(call.durationMs) }}</span>
+                      </div>
+                      <div class="tool-row-body" v-show="isOpen(call.id)">
+                        <div class="tool-pane">
+                          <div class="tool-pane-title">输入</div>
+                          <pre class="tool-pane-pre">{{ formatJSON(call.inputPreview || call.input || {}) }}</pre>
+                        </div>
+                        <div class="tool-pane">
+                          <div class="tool-pane-title">输出</div>
+                          <pre class="tool-pane-pre">{{ call.error ? String(call.error) : formatJSON(call.result) }}</pre>
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
               </div>
+            </template>
+            <div v-if="m.citations?.length" class="citations">
+              引用：
+              <span v-for="(c, i) in m.citations" :key="i" class="citation-item" :title="c.snippet || ''">
+                {{ c.title }} · {{ c.source }}
+              </span>
             </div>
           </div>
         </div>
@@ -173,6 +174,35 @@ function buildToolView(events) {
   return out
 }
 
+function textItems(m) {
+  const arr = Array.isArray(m?.content) ? m.content : []
+  return arr.filter(x => x && x.type === 'text').map(x => String(x.text || ''))
+}
+function joinText(m) {
+  return textItems(m).join('\n\n')
+}
+function extractEvents(m) {
+  const arr = Array.isArray(m?.content) ? m.content : []
+  const out = []
+  for (const x of arr) {
+    if (x && (x.type === 'tool_calls' || x.type === 'tool_update')) {
+      out.push({ messageType: x.type === 'tool_calls' ? 'tool_calls' : 'tool_update', ...x })
+    }
+  }
+  return out
+}
+
+function buildBatchForItem(m, part) {
+  try {
+    const events = extractEvents(m)
+    const batches = buildToolView(events)
+    const ids = new Set((part?.calls || []).map((c) => String(c?.id || '')))
+    const match = batches.find((b) => b.calls.some((c) => ids.has(String(c.id || ''))))
+    return match ? [match] : []
+  } catch (_) {
+    return []
+  }
+}
 function callTitle(x) {
   const provider = String(x?.provider || '').trim()
   const tool = String(x?.toolName || x?.tool || '').trim()
@@ -242,8 +272,8 @@ function formatTime(ts) {
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`
 }
 
-function addMessage(role, content, citations = [], events = []) {
-  messages.value.push({ role, content, citations, events })
+function addMessage(role, content, citations = []) {
+  messages.value.push({ role, content: [{ type: 'text', text: String(content || '') }], citations })
   scrollToBottom()
 }
 
@@ -255,15 +285,51 @@ async function onSend() {
   input.value = ''
   sending.value = true
   try {
-    const placeholder = { role: 'assistant', content: '处理中…', citations: [], events: [] }
+    const placeholder = { role: 'assistant', content: [{ type: 'text', text: '处理中…' }], citations: [] }
     messages.value.push(placeholder)
     const idx = messages.value.length - 1
-    const r = await fetch('http://localhost:3334/api/agent/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userInput: text, sessionId: sessionId.value }) })
-    const res = await r.json()
-    messages.value[idx].content = String(res?.reply || '')
-    messages.value[idx].citations = []
-    messages.value[idx].events = []
-    sending.value = false
+    const url = `http://localhost:3334/api/agent/stream?q=${encodeURIComponent(text)}&sessionId=${encodeURIComponent(sessionId.value)}`
+    const es = new EventSource(url)
+    let hadPlaceholder = false
+    es.onmessage = (ev) => {
+      try {
+        if (!hadPlaceholder) {
+          hadPlaceholder = true
+          messages.value[idx].content = []
+        }
+        const data = JSON.parse(ev.data || '{}')
+        if (data?.type === 'assistant') {
+          const arr = Array.isArray(messages.value[idx].content) ? messages.value[idx].content : []
+          arr.push({ type: 'text', text: String(data?.content || '') })
+          messages.value[idx].content = arr
+        } else if (data?.type === 'tool_calls') {
+          const arr = Array.isArray(messages.value[idx].content) ? messages.value[idx].content : []
+          arr.push({ type: 'tool_calls', calls: data.calls || [], timestamp: Date.now() })
+          messages.value[idx].content = arr
+        } else if (data?.type === 'tool_update') {
+          const arr = Array.isArray(messages.value[idx].content) ? messages.value[idx].content : []
+          arr.push({ type: 'tool_update', id: data.id, status: data.status, result: data.result, error: data.error, startedAt: data.startedAt, completedAt: data.completedAt, durationMs: data.durationMs, timestamp: Date.now() })
+          messages.value[idx].content = arr
+        } else if (data?.type === 'done') {
+          if (typeof data?.reply === 'string') {
+            const arr = Array.isArray(messages.value[idx].content) ? messages.value[idx].content : []
+            arr.push({ type: 'text', text: String(data.reply) })
+            messages.value[idx].content = arr
+          }
+          sending.value = false
+          es.close()
+        } else if (data?.type === 'error') {
+          messages.value[idx].content = [{ type: 'text', text: '执行失败' }]
+          sending.value = false
+          es.close()
+        }
+      } catch (_) {}
+    }
+    es.onerror = () => {
+      messages.value[idx].content = [{ type: 'text', text: '连接失败' }]
+      sending.value = false
+      es.close()
+    }
   } catch (e) {
     addMessage('assistant', '调用失败，请检查网络或密钥。')
     sending.value = false

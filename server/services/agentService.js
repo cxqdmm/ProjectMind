@@ -91,3 +91,73 @@ export async function run(userInput, sessionId = 'default') {
     return { reply, toolCalls, steps: step }
   }
 }
+
+export async function runStream(userInput, sessionId = 'default', emit) {
+  const cfg = readLLMConfig()
+  const provider = createProvider(cfg)
+  const systemPrompt = readAgentsPrompt()
+  const historyRaw = getSessionHistory(sessionId)
+  const history = historyRaw.map((m) => toAssistantFromOpenSkill(m))
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    ...history,
+    { role: 'user', content: userInput },
+  ]
+  let step = 1
+  while (true) {
+    const completion = await createChatReply(provider, messages)
+    const reply = String(completion?.choices?.[0]?.message?.content || '')
+    const calls = parseToolCalls(reply) || []
+    if (calls.length > 0) {
+      const batchId = `batch_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+      const prepared = calls.map((c, i) => ({
+        id: `${batchId}_${i + 1}`,
+        provider: c.provider,
+        tool: c.tool,
+        toolName: c.toolName,
+        input: c.input,
+        status: 'pending',
+        startedAt: Date.now(),
+      }))
+      emit({ type: 'tool_calls', calls: prepared })
+      const openMsgs = []
+      for (let i = 0; i < calls.length; i++) {
+        const c = calls[i]
+        const id = prepared[i].id
+        const t0 = Date.now()
+        try {
+          const inv = await invokeTool(c.provider, c.tool, c.input)
+          const toolResult = inv?.result ?? inv
+          emit({ type: 'tool_update', id, status: 'completed', result: toolResult, completedAt: Date.now(), durationMs: Date.now() - t0 })
+          if (c.tool === 'openskills.read') {
+            const skill = String(toolResult?.key || '')
+            const body = String(toolResult?.body || '')
+            if (body) openMsgs.push({ role: 'openSkill', toolName: 'read', skill, content: body })
+          } else if (c.tool === 'openskills.readReference') {
+            const skill = String(c.input?.skill || toolResult?.key || '')
+            const extras = Array.isArray(toolResult?.extras) ? toolResult.extras : []
+            for (const ex of extras) {
+              const name = String(ex?.file || '')
+              const content = String(ex?.content || '')
+              if (content) openMsgs.push({ role: 'openSkill', toolName: 'readReference', skill, reference: name, content })
+            }
+          }
+        } catch (e) {
+          emit({ type: 'tool_update', id, status: 'failed', error: String(e?.message || e), completedAt: Date.now(), durationMs: Date.now() - t0 })
+        }
+      }
+      messages.push({ role: 'assistant', content: reply })
+      for (const m of openMsgs) messages.push(toAssistantFromOpenSkill(m))
+      const maxTurns = Number(cfg?.historyMaxTurns) || 12
+      const histSegments = [{ role: 'assistant', content: reply }, ...openMsgs]
+      appendSessionSegments(sessionId, histSegments, maxTurns)
+      step++
+      continue
+    }
+    messages.push({ role: 'assistant', content: reply })
+    const maxTurns = Number(cfg?.historyMaxTurns) || 12
+    appendSessionSegments(sessionId, [{ role: 'user', content: userInput }, { role: 'assistant', content: reply }], maxTurns)
+    emit({ type: 'done', reply, step })
+    return
+  }
+}
