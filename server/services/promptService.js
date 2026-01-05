@@ -6,7 +6,6 @@ import { scanSkills } from './skillsService.js'
 export function readAgentsPrompt() {
   const p = path.join(process.cwd(), 'AGENTS.md')
   const txt = readFileSafe(p)
-  if (txt && txt.includes('<skills_system')) return txt
   const skills = scanSkills()
   const items = (Array.isArray(skills) ? skills : []).map((s) => {
     const name = String(s?.key || '').trim()
@@ -32,10 +31,8 @@ export function readAgentsPrompt() {
     '- Do not call or invent skills that are not listed',
     '- Do not reload a skill that is already present in context',
   ].join('\n')
-  const xml = [
-    '<skills_system priority="1">',
-    '',
-    '## Available Skills',
+  const combined = [
+    String(txt || ''),
     '',
     '<usage>',
     usage,
@@ -44,8 +41,6 @@ export function readAgentsPrompt() {
     '<available_skills>',
     items,
     '</available_skills>',
-    '',
-    '</skills_system>',
   ].join('\n')
-  return xml
+  return combined
 }
