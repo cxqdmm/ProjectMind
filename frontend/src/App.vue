@@ -55,6 +55,10 @@
                 </div>
               </div>
             </template>
+            <div v-if="m.role === 'assistant' && m.pending" class="message-loading">
+              <i class="dot dot-amber"></i>
+              执行中…
+            </div>
             <div v-if="m.citations?.length" class="citations">
               引用：
               <span v-for="(c, i) in m.citations" :key="i" class="citation-item" :title="c.snippet || ''">
@@ -285,7 +289,7 @@ async function onSend() {
   input.value = ''
   sending.value = true
   try {
-    const placeholder = { role: 'assistant', content: [{ type: 'text', text: '处理中…' }], citations: [] }
+    const placeholder = { role: 'assistant', content: [{ type: 'text', text: '处理中…' }], citations: [], pending: true }
     messages.value.push(placeholder)
     const idx = messages.value.length - 1
     const url = `http://localhost:3334/api/agent/stream?q=${encodeURIComponent(text)}&sessionId=${encodeURIComponent(sessionId.value)}`
@@ -316,10 +320,12 @@ async function onSend() {
             arr.push({ type: 'text', text: String(data.reply) })
             messages.value[idx].content = arr
           }
+          messages.value[idx].pending = false
           sending.value = false
           es.close()
         } else if (data?.type === 'error') {
           messages.value[idx].content = [{ type: 'text', text: '执行失败' }]
+          messages.value[idx].pending = false
           sending.value = false
           es.close()
         }
@@ -327,6 +333,7 @@ async function onSend() {
     }
     es.onerror = () => {
       messages.value[idx].content = [{ type: 'text', text: '连接失败' }]
+      messages.value[idx].pending = false
       sending.value = false
       es.close()
     }
@@ -403,4 +410,5 @@ onMounted(() => {
 .input-row input { flex: 1; padding: 12px 14px; border: none; outline: none; background: transparent; }
 .input-row button { padding: 0 18px; border: none; border-radius: 999px; background: #111827; color: #fff; font-weight: 700; cursor: pointer; }
 .input-row button:hover { background: #0f172a; }
+.message-loading { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: #64748b; margin-top: 6px; }
 </style>
