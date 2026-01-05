@@ -23,15 +23,14 @@
               <div v-if="part?.type === 'text' && m.role === 'assistant'" class="md" v-html="renderMarkdown(String(part?.text || ''))"></div>
               <pre v-else-if="part?.type === 'text'">{{ String(part?.text || '') }}</pre>
               <div v-else-if="part?.type === 'tool_calls'" class="tool-events">
-                <div v-for="(batch, bi) in buildBatchForItem(m, part)" :key="bi" class="tool-group">
-                  <div class="tool-group-title">函数批次 · {{ batch.calls.length }} 个调用</div>
+                <div v-for="(batch, bi) in buildBatchForItem(m, part)" :key="bi" class="tool-group compact">
                   <div class="tool-list">
                     <div v-for="call in batch.calls" :key="call.id" class="tool-row">
                       <div class="tool-row-head">
                         <span class="tool-row-name">{{ callTitle(call) }}</span>
-                        <span class="tool-row-state">
+                        <span v-if="referenceLabel(call)" class="tool-row-ref">{{ referenceLabel(call) }}</span>
+                        <span class="tool-row-state-dot">
                           <i :class="stateDotClass(call.status)"></i>
-                          {{ statusText(call.status) }}
                         </span>
                         <button class="tool-row-toggle" @click="toggleTool(call.id)">{{ isOpen(call.id) ? '收起' : '展开' }}</button>
                       </div>
@@ -240,6 +239,17 @@ function toolLabel(x) {
   return t || p || '未知工具'
 }
 
+function referenceLabel(call) {
+  const files = Array.isArray(call?.input?.files)
+    ? call.input.files
+    : (call?.input?.file ? [call.input.file] : [])
+  if (!files.length && Array.isArray(call?.result?.extras)) {
+    const names = call.result.extras.map(e => e?.file).filter(Boolean)
+    if (names.length) return names.join(', ')
+  }
+  return files.join(', ')
+}
+
 function statusClass(s) {
   const k = String(s || '').toLowerCase()
   if (k === 'running') return 'running'
@@ -388,12 +398,13 @@ onMounted(() => {
 
 .tool-events { max-width: 720px; margin: 12px auto; }
 .tool-group { border: 1px solid #e5e7eb; border-radius: 14px; padding: 14px; background: #ffffff; }
-.tool-group-title { font-size: 13px; color: #475569; font-weight: 700; margin-bottom: 12px; }
+.tool-group.compact { padding: 10px; }
 .tool-list { display: grid; grid-template-columns: 1fr; gap: 12px; }
-.tool-row { border: 1px solid #e5e7eb; border-radius: 14px; background: #ffffff; padding: 12px; box-shadow: 0 2px 10px rgba(17,24,39,0.06); }
-.tool-row-head { display: flex; align-items: center; gap: 10px; }
-.tool-row-name { font-weight: 400; color: #0f172a; font-size: 13px; }
-.tool-row-state { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: #64748b; margin-left: auto; text-align: right; }
+.tool-row { border: 1px solid #e5e7eb; border-radius: 12px; background: #ffffff; padding: 10px 12px; box-shadow: 0 2px 10px rgba(17,24,39,0.06); }
+.tool-row-head { display: flex; align-items: center; gap: 8px; }
+.tool-row-name { font-weight: 500; color: #0f172a; font-size: 13px; }
+.tool-row-ref { font-size: 12px; color: #64748b; }
+.tool-row-state-dot { display: inline-flex; align-items: center; margin-left: auto; }
 .tool-row-toggle { border: 1px solid #e5e7eb; background: #fff; color: #475569; font-size: 11px; border-radius: 12px; padding: 3px 10px; }
 .tool-row-toggle:hover { background: #f8fafc; }
 .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
