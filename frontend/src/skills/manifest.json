@@ -1,6 +1,0 @@
-{
-  "skills": [
-    { "key": "poem_writer", "name": "古诗编写", "description": "创作中文诗歌（现代诗/绝句/词），并提供自检与润色建议" },
-    { "key": "bbc", "name": "BBC问题解答", "description": "解答 BBC 线下保险业务相关问题" }
-  ]
-}

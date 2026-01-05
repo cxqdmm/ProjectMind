@@ -3,12 +3,7 @@
     <header class="header">
       <div class="header-inner">
         <h1>智能助手</h1>
-        <div class="settings">
-          <label>
-            Qwen API Key
-            <input v-model.trim="apiKey" @change="onApiKeyChange" type="password" placeholder="粘贴密钥" />
-          </label>
-        </div>
+        <!-- settings removed -->
       </div>
     </header>
 
@@ -81,14 +76,13 @@
 import { ref, onMounted, nextTick } from 'vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
-import { runAgentBrowser } from './lib/agent'
+ 
 
 const messages = ref([])
 const input = ref('')
 const sending = ref(false)
 const messagesRef = ref(null)
 const sessionId = ref(localStorage.getItem('pm_session_id') || '')
-const apiKey = ref(localStorage.getItem('pm_qwen_api_key') || '')
 const openIds = ref(new Set())
 
 function scrollToBottom() {
@@ -264,20 +258,11 @@ async function onSend() {
     const placeholder = { role: 'assistant', content: '处理中…', citations: [], events: [] }
     messages.value.push(placeholder)
     const idx = messages.value.length - 1
-    const onEvent = (ev) => {
-      if (ev.messageType === 'tool_calls' || ev.messageType === 'tool_update') {
-        messages.value[idx].events.push(ev)
-      } else if (ev.messageType === 'assistant_final') {
-        messages.value[idx].content = ev.reply || (ev.error ? `错误：${ev.error}` : '')
-        messages.value[idx].citations = ev.citations || []
-        sending.value = false
-      }
-      scrollToBottom()
-    }
-    const res = await runAgentBrowser(text, { sessionId: sessionId.value, apiKey: apiKey.value }, onEvent)
-    messages.value[idx].content = res.reply
-    messages.value[idx].citations = res.citations || []
-    messages.value[idx].events = Array.isArray(res.events) ? res.events : messages.value[idx].events
+    const r = await fetch('http://localhost:3334/api/agent/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userInput: text, sessionId: sessionId.value }) })
+    const res = await r.json()
+    messages.value[idx].content = String(res?.reply || '')
+    messages.value[idx].citations = []
+    messages.value[idx].events = []
     sending.value = false
   } catch (e) {
     addMessage('assistant', '调用失败，请检查网络或密钥。')
@@ -293,9 +278,7 @@ onMounted(() => {
   addMessage('assistant', '你好！我是智能助手，可以帮助你解决问题。\n\n请输入你的需求开始吧。')
 })
 
-function onApiKeyChange() {
-  localStorage.setItem('pm_qwen_api_key', apiKey.value)
-}
+// api key handling removed
 </script>
 
 <style scoped>

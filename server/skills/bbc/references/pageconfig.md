@@ -41,3 +41,4 @@
 | $config('success-page-tip') | 投保成功页底部提示，用于告知后续处理流程；支持动态配置 | InsurantSuccess/index.vue | 投保成功页 |
 | $config('success-page-download') | 成功页下载APP提示文案，引导用户下载查看保障信息；支持动态配置 | InsurantSuccess/index.vue | 投保成功页 |
 | $config('insure-success-download-common') | 成功页通用下载文案；当未配置 success-page-download 时作为备用，提示下载APP查询保障信息 | InsurantSuccess/index.vue | 投保成功页 |
+
