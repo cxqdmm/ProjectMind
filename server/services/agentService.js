@@ -60,11 +60,11 @@ export async function run(userInput, sessionId = 'default') {
       )
       const openMsgs = []
       for (const r of results) {
-        if (r.ok && r.tool.startsWith('openskills.read')) {
+        if (r.ok && r.tool === 'openskills.read') {
           const skill = String(r.result?.key || '')
           const body = String(r.result?.body || '')
           if (body) openMsgs.push({ role: 'openSkill', toolName: 'read', skill, content: body })
-        } else if (r.ok && r.tool.startsWith('openskills.readReference')) {
+        } else if (r.ok && r.tool === 'openskills.readReference') {
           const skill = String(r.input?.skill || r.result?.key || '')
           const extras = Array.isArray(r.result?.extras) ? r.result.extras : []
           for (const ex of extras) {
