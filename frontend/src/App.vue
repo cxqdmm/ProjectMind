@@ -28,7 +28,7 @@
                     <div v-for="call in batch.calls" :key="call.id" class="tool-row">
                       <div class="tool-row-head">
                         <span class="tool-row-name">{{ callTitle(call) }}</span>
-                        <span v-if="referenceLabel(call)" class="tool-row-ref">{{ referenceLabel(call) }}</span>
+                        <span v-if="toolInfoLabel(call)" class="tool-row-ref">{{ toolInfoLabel(call) }}</span>
                         <span class="tool-row-state-dot">
                           <i :class="stateDotClass(call.status)"></i>
                         </span>
@@ -209,23 +209,6 @@ function buildBatchForItem(m, part) {
 function callTitle(x) {
   const provider = String(x?.provider || '').trim()
   const tool = String(x?.toolName || x?.tool || '').trim()
-  if (provider === 'skill') {
-    // Prefer final result details
-    const r = x?.result || {}
-    const key = String(r?.key || x?.input?.skill || '')
-    if (tool.startsWith('execute')) {
-      const fn = String(r?.function || x?.input?.function || '')
-      return fn ? `skill.execute · ${key ? 'skill=' + key + ' · ' : ''}function=${fn}` : `skill.execute${key ? ' · skill=' + key : ''}`
-    }
-    if (tool.startsWith('loadReference')) {
-      const files = Array.isArray(r?.extras) ? r.extras.map(e => e.file).filter(Boolean) : (Array.isArray(x?.input?.files) ? x.input.files : (x?.input?.file ? [x.input.file] : []))
-      const filesText = files && files.length ? `files=${files.join(',')}` : ''
-      return `skill.loadReference${filesText ? ' · ' + filesText : ''}${key ? ' · skill=' + key : ''}`
-    }
-    if (tool.startsWith('load')) {
-      return `skill.load${key ? ' · skill=' + key : ''}`
-    }
-  }
   // Fallback
   return tool ? `${provider}.${tool}` : (x?.name || '未知工具')
 }
@@ -236,18 +219,26 @@ function toolLabel(x) {
   const name = String(x?.name || '').trim()
   if (name) return name
   if (p && t) return `${p}.${t}`
-  return t || p || '未知工具'
+  return t || p || ''
 }
 
-function referenceLabel(call) {
+function toolInfoLabel(call) {
+  const tool = String(call?.toolName || call?.tool || '')
+  const skill = String(call?.input?.skill || call?.result?.key || '')
   const files = Array.isArray(call?.input?.files)
     ? call.input.files
     : (call?.input?.file ? [call.input.file] : [])
-  if (!files.length && Array.isArray(call?.result?.extras)) {
-    const names = call.result.extras.map(e => e?.file).filter(Boolean)
-    if (names.length) return names.join(', ')
+  const extras = Array.isArray(call?.result?.extras) ? call.result.extras.map(e => e?.file).filter(Boolean) : []
+  const names = files.length ? files : extras
+  if (/readReference/i.test(tool)) {
+    const namesText = names.join(', ')
+    if (skill && namesText) return `${skill} · ${namesText}`
+    return namesText || skill
   }
-  return files.join(', ')
+  if (/read(\b|$)/i.test(tool)) {
+    return skill
+  }
+  return ''
 }
 
 function statusClass(s) {
