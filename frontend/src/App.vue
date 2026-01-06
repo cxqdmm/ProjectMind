@@ -3,7 +3,32 @@
     <header class="header">
       <div class="header-inner">
         <h1>智能助手</h1>
-        <!-- settings removed -->
+        <div class="toolbar">
+          <button class="tool-btn" @click="onSkillsToggle" title="技能">
+            <svg viewBox="0 0 24 24" width="18" height="18" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M12 2l3 6l6 1l-4.5 4.2L18 20l-6-3.2L6 20l1.5-6.8L3 9l6-1z" fill="#0ea5e9"/></svg>
+            技能
+          </button>
+          <div v-show="skillsOpen" ref="skillsDropdownRef" class="skills-dropdown">
+            <div class="skills-head">
+              <span>技能列表</span>
+              <button class="refresh-btn" @click="onSkillsRefresh" :disabled="skillsLoading">{{ skillsLoading ? '加载中…' : '刷新' }}</button>
+            </div>
+            <div class="skills-body">
+              <div v-if="skillsError" class="skills-empty">加载失败</div>
+              <div v-else-if="skillsLoading" class="skills-empty">加载中…</div>
+              <div v-else-if="!skills.length" class="skills-empty">暂无技能</div>
+              <div v-else class="skills-list">
+                <div v-for="s in skills" :key="s.key" class="skill-item">
+                  <div class="skill-text">
+                    <div class="skill-name">{{ s.name || s.key }}</div>
+                    <div class="skill-desc">{{ s.description || '' }}</div>
+                  </div>
+                  <button class="skill-insert" @click="onInsertSkill(s.name || s.key)">插入</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </header>
 
@@ -88,6 +113,11 @@ const sending = ref(false)
 const messagesRef = ref(null)
 const sessionId = ref(localStorage.getItem('pm_session_id') || '')
 const openIds = ref(new Set())
+const skillsOpen = ref(false)
+const skills = ref([])
+const skillsLoading = ref(false)
+const skillsError = ref('')
+const skillsDropdownRef = ref(null)
 
 function scrollToBottom() {
   nextTick(() => {
@@ -117,6 +147,36 @@ function toggleTool(id) {
   if (s.has(k)) s.delete(k)
   else s.add(k)
   openIds.value = s
+}
+
+async function fetchSkills() {
+  try {
+    skillsLoading.value = true
+    skillsError.value = ''
+    const r = await fetch('http://localhost:3334/api/skills/manifest')
+    const j = await r.json()
+    const arr = Array.isArray(j?.skills) ? j.skills : []
+    skills.value = arr.map(x => ({ key: String(x?.key || ''), name: String(x?.name || ''), description: String(x?.description || '') }))
+  } catch (e) {
+    skillsError.value = '加载失败'
+  } finally {
+    skillsLoading.value = false
+  }
+}
+function onSkillsToggle() {
+  skillsOpen.value = !skillsOpen.value
+  if (skillsOpen.value && skills.value.length === 0 && !skillsLoading.value) {
+    fetchSkills()
+  }
+}
+function onSkillsRefresh() {
+  fetchSkills()
+}
+function onInsertSkill(name) {
+  const t = String(name || '').trim()
+  if (!t) return
+  input.value = input.value ? input.value + ' ' + t : t
+  skillsOpen.value = false
 }
 
 function buildToolView(events) {
@@ -350,6 +410,15 @@ onMounted(() => {
     localStorage.setItem('pm_session_id', sessionId.value)
   }
   addMessage('assistant', '你好！我是智能助手，可以帮助你解决问题。\n\n请输入你的需求开始吧。')
+  document.addEventListener('click', (ev) => {
+    const el = skillsDropdownRef.value
+    const toolbar = document.querySelector('.toolbar')
+    if (!el || !toolbar) return
+    const target = ev.target
+    if (skillsOpen.value && target && !toolbar.contains(target)) {
+      skillsOpen.value = false
+    }
+  })
 })
 
 // api key handling removed
@@ -360,8 +429,23 @@ onMounted(() => {
 .header { position: sticky; top: 0; background: #ffffff; border-bottom: 1px solid #e5e7eb; z-index: 10; }
 .header-inner { max-width: 960px; margin: 0 auto; padding: 12px 20px; display: flex; align-items: center; gap: 12px; }
 .header h1 { margin: 0; font-size: 16px; font-weight: 700; }
-.settings { margin-left: auto; display: flex; align-items: center; gap: 8px; color: #475569; }
-.settings input { padding: 8px 10px; border: 1px solid #e5e7eb; border-radius: 10px; background: #ffffff; color: #0f172a; }
+.toolbar { margin-left: auto; display: flex; align-items: center; gap: 8px; position: relative; }
+.tool-btn { display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid #e5e7eb; background: #fff; color: #0f172a; font-size: 12px; border-radius: 12px; }
+.tool-btn:hover { background: #f8fafc; }
+.skills-dropdown { position: absolute; right: 0; top: 40px; width: 320px; background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 12px 28px rgba(17,24,39,0.08); }
+.skills-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid #e5e7eb; font-size: 12px; color: #475569; }
+.refresh-btn { border: 1px solid #e5e7eb; background: #fff; color: #475569; font-size: 11px; border-radius: 12px; padding: 3px 10px; }
+.refresh-btn:hover { background: #f8fafc; }
+.skills-body { max-height: 300px; overflow: auto; }
+.skills-empty { padding: 14px; font-size: 12px; color: #64748b; }
+.skills-list { display: grid; grid-template-columns: 1fr; }
+.skill-item { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid #f1f5f9; }
+.skill-item:last-child { border-bottom: none; }
+.skill-text { flex: 1; overflow: hidden; }
+.skill-name { font-size: 13px; font-weight: 600; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.skill-desc { font-size: 12px; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.skill-insert { border: 1px solid #e5e7eb; background: #fff; color: #475569; font-size: 11px; border-radius: 12px; padding: 3px 10px; }
+.skill-insert:hover { background: #f8fafc; }
 .main { margin: 0 auto; padding: 0 20px 120px; }
 .messages { max-width: 820px; margin: 24px auto; background: transparent; border: none; border-radius: 0; padding: 0; min-height: 60vh; max-height: none; overflow: visible; box-shadow: none; }
 .message { display: flex; align-items: flex-start; gap: 14px; margin: 28px auto; max-width: 720px; }
