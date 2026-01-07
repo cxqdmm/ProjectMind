@@ -353,50 +353,54 @@ async function onSend() {
     const placeholder = { role: 'assistant', content: [{ type: 'text', text: '处理中…' }], citations: [], pending: true }
     messages.value.push(placeholder)
     const idx = messages.value.length - 1
-    const url = `http://localhost:3334/api/agent/stream?q=${encodeURIComponent(text)}&sessionId=${encodeURIComponent(sessionId.value)}`
-    const es = new EventSource(url)
+    const r = await fetch('http://localhost:3334/api/agent/stream', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userInput: text, sessionId: sessionId.value }) })
+    const reader = r.body.getReader()
+    const decoder = new TextDecoder()
     let hadPlaceholder = false
-    es.onmessage = (ev) => {
-      try {
+    let buf = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += decoder.decode(value, { stream: true })
+      const parts = buf.split('\n\n')
+      buf = parts.pop() || ''
+      for (const chunk of parts) {
+        const line = chunk.split('\n').find(l => l.startsWith('data:'))
+        if (!line) continue
         if (!hadPlaceholder) {
           hadPlaceholder = true
           messages.value[idx].content = []
         }
-        const data = JSON.parse(ev.data || '{}')
-        if (data?.type === 'assistant') {
+        let data = null
+        try { data = JSON.parse(line.slice(5).trim()) } catch (_) { data = null }
+        if (!data) continue
+        if (data.type === 'assistant') {
           const arr = Array.isArray(messages.value[idx].content) ? messages.value[idx].content : []
-          arr.push({ type: 'text', text: String(data?.content || '') })
+          arr.push({ type: 'text', text: String(data.content || '') })
           messages.value[idx].content = arr
-        } else if (data?.type === 'tool_calls') {
+        } else if (data.type === 'tool_calls') {
           const arr = Array.isArray(messages.value[idx].content) ? messages.value[idx].content : []
           arr.push({ type: 'tool_calls', calls: data.calls || [], timestamp: Date.now() })
           messages.value[idx].content = arr
-        } else if (data?.type === 'tool_update') {
+        } else if (data.type === 'tool_update') {
           const arr = Array.isArray(messages.value[idx].content) ? messages.value[idx].content : []
           arr.push({ type: 'tool_update', id: data.id, status: data.status, result: data.result, error: data.error, startedAt: data.startedAt, completedAt: data.completedAt, durationMs: data.durationMs, timestamp: Date.now() })
           messages.value[idx].content = arr
-        } else if (data?.type === 'done') {
-          if (typeof data?.reply === 'string') {
-            const arr = Array.isArray(messages.value[idx].content) ? messages.value[idx].content : []
-            arr.push({ type: 'text', text: String(data.reply) })
-            messages.value[idx].content = arr
-          }
+        } else if (data.type === 'done') {
+          const arr = Array.isArray(messages.value[idx].content) ? messages.value[idx].content : []
+          if (typeof data.reply === 'string') arr.push({ type: 'text', text: String(data.reply) })
+          messages.value[idx].content = arr
           messages.value[idx].pending = false
           sending.value = false
-          es.close()
-        } else if (data?.type === 'error') {
+        } else if (data.type === 'error') {
           messages.value[idx].content = [{ type: 'text', text: '执行失败' }]
           messages.value[idx].pending = false
           sending.value = false
-          es.close()
+        } else if (data.type === 'end') {
+          messages.value[idx].pending = false
+          sending.value = false
         }
-      } catch (_) {}
-    }
-    es.onerror = () => {
-      messages.value[idx].content = [{ type: 'text', text: '连接失败' }]
-      messages.value[idx].pending = false
-      sending.value = false
-      es.close()
+      }
     }
   } catch (e) {
     addMessage('assistant', '调用失败，请检查网络或密钥。')
