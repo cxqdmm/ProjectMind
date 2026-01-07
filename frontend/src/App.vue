@@ -78,6 +78,10 @@
                   </div>
                 </div>
               </div>
+              <MemoryUsedList
+                v-else-if="part?.type === 'memory_used'"
+                :memories="part.memories || []"
+              />
             </template>
             <div v-if="m.role === 'assistant' && m.pending" class="message-loading">
               <i class="dot dot-amber"></i>
@@ -102,7 +106,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, onMounted, nextTick, defineComponent, h } from 'vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
  
@@ -118,6 +122,49 @@ const skills = ref([])
 const skillsLoading = ref(false)
 const skillsError = ref('')
 const skillsDropdownRef = ref(null)
+
+const MemoryUsedList = defineComponent({
+  name: 'MemoryUsedList',
+  props: {
+    memories: {
+      type: Array,
+      default: () => [],
+    },
+  },
+  setup(props) {
+    return () => {
+      const items = Array.isArray(props.memories) ? props.memories : []
+      if (!items.length) return null
+      return h('div', { class: 'memory-card' }, [
+        h('div', { class: 'memory-card-head' }, [
+          h('span', { class: 'memory-pill' }, '记忆'),
+          h('span', { class: 'memory-subtitle' }, '本轮使用的技能记忆'),
+        ]),
+        h(
+          'div',
+          { class: 'memory-list' },
+          items.map((m) =>
+            h('div', { class: 'memory-item', key: String(m.id || '') }, [
+              h('div', { class: 'memory-item-title' }, [
+                h('span', { class: 'memory-item-skill' }, m.skill || '未知技能'),
+                m.reference
+                  ? h('span', { class: 'memory-item-ref' }, String(m.reference))
+                  : null,
+              ]),
+              m.snippet
+                ? h(
+                    'div',
+                    { class: 'memory-item-snippet' },
+                    String(m.snippet)
+                  )
+                : null,
+            ])
+          )
+        ),
+      ])
+    }
+  },
+})
 
 function scrollToBottom() {
   nextTick(() => {
@@ -386,6 +433,13 @@ async function onSend() {
           const arr = Array.isArray(messages.value[idx].content) ? messages.value[idx].content : []
           arr.push({ type: 'tool_update', id: data.id, status: data.status, result: data.result, error: data.error, startedAt: data.startedAt, completedAt: data.completedAt, durationMs: data.durationMs, timestamp: Date.now() })
           messages.value[idx].content = arr
+        } else if (data.type === 'memory_used') {
+          const arr = Array.isArray(messages.value[idx].content) ? messages.value[idx].content : []
+          const list = Array.isArray(data.memories) ? data.memories : []
+          if (list.length) {
+            arr.push({ type: 'memory_used', memories: list, timestamp: Date.now() })
+            messages.value[idx].content = arr
+          }
         } else if (data.type === 'done') {
           const arr = Array.isArray(messages.value[idx].content) ? messages.value[idx].content : []
           if (typeof data.reply === 'string') arr.push({ type: 'text', text: String(data.reply) })
@@ -501,4 +555,15 @@ onMounted(() => {
 .input-row button { padding: 0 18px; border: none; border-radius: 999px; background: #111827; color: #fff; font-weight: 700; cursor: pointer; }
 .input-row button:hover { background: #0f172a; }
 .message-loading { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: #64748b; margin-top: 6px; }
+
+.memory-card { margin: 12px 0; padding: 10px 12px; border-radius: 12px; border: 1px solid #e5e7eb; background: #f8fafc; }
+.memory-card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.memory-pill { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: #e0f2fe; color: #0369a1; font-weight: 600; }
+.memory-subtitle { font-size: 12px; color: #64748b; }
+.memory-list { display: grid; grid-template-columns: 1fr; gap: 8px; }
+.memory-item { font-size: 12px; color: #0f172a; }
+.memory-item-title { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }
+.memory-item-skill { font-weight: 600; }
+.memory-item-ref { font-size: 11px; color: #64748b; }
+.memory-item-snippet { font-size: 12px; color: #475569; white-space: pre-wrap; }
 </style>

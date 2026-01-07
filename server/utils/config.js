@@ -12,7 +12,7 @@ export function readLLMConfig() {
       baseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
       model: 'qwen-plus',
     },
-    historyMaxTurns: 12,
+    historyMaxTurns: 100,
   }
 }
 
