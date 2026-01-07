@@ -34,7 +34,6 @@ export async function runStream(userInput, sessionId = 'default', emit) {
     const reply = String(completion?.choices?.[0]?.message?.content || '')
     const calls = parseToolCalls(reply) || []
     if (calls.length > 0) {
-      // messages.push({ role: 'assistant', content: reply })
       const batchId = `batch_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
       const prepared = calls.map((c, i) => ({
         id: `${batchId}_${i + 1}`,
@@ -58,14 +57,16 @@ export async function runStream(userInput, sessionId = 'default', emit) {
           if (c.tool === 'openskills.read') {
             const skill = String(toolResult?.key || '')
             const body = String(toolResult?.body || '')
-            if (body) openMsgs.push({ role: 'openSkill', toolName: 'read', skill, content: body })
+            const meta = toolResult?.meta || {}
+            if (body) openMsgs.push({ role: 'openSkill', toolName: 'read', skill, content: body, meta })
           } else if (c.tool === 'openskills.readReference') {
             const skill = String(c.input?.skill || toolResult?.key || '')
             const extras = Array.isArray(toolResult?.extras) ? toolResult.extras : []
             for (const ex of extras) {
               const name = String(ex?.file || '')
               const content = String(ex?.content || '')
-              if (content) openMsgs.push({ role: 'openSkill', toolName: 'readReference', skill, reference: name, content })
+              const meta = ex?.meta || {}
+              if (content) openMsgs.push({ role: 'openSkill', toolName: 'readReference', skill, reference: name, content, meta })
             }
           }
         } catch (e) {

@@ -86,5 +86,6 @@ export function loadReference(name, file) {
   if (!fp) throw new Error('invalid path')
   const txt = readFileSafe(fp)
   if (txt == null) throw new Error('reference not found')
-  return { file: rel, content: txt }
+  const { meta, body } = parseFrontmatter(txt)
+  return { file: rel, meta, content: body, rawContent: txt }
 }

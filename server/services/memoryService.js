@@ -16,7 +16,11 @@ function buildSkillMemoriesFromMessages(messages) {
     if (tool === 'read' || tool === 'readReference') {
       const kind = tool === 'read' ? 'skill' : 'reference'
       const id = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${i}`
-      const snippet = content.length > 320 ? content.slice(0, 320) + '…' : content
+      const meta = m.meta || {}
+      const name = String(meta.name || '').trim()
+      const description = String(meta.description || '').trim()
+      // 使用 meta.name 和 meta.description 作为 snippet，如果没有则回退到 content 截断
+      let snippet = `${name}: ${description}`
       memories.push({
         id,
         kind,
@@ -24,6 +28,7 @@ function buildSkillMemoriesFromMessages(messages) {
         reference,
         content,
         snippet,
+        meta,
       })
     }
   }
@@ -51,7 +56,6 @@ function buildSelectorMessages(userInput, memories) {
   const question = String(userInput || '')
   const items = memories.map((m) => ({
     id: m.id,
-    kind: m.kind,
     skill: m.skill,
     reference: m.reference,
     snippet: m.snippet,
@@ -120,10 +124,9 @@ export async function selectSkillMemoriesForQuestion(provider, userInput, sessio
     const picked = base.filter((m) => ids.includes(m.id))
     if (picked.length > 0) {
       return { selected: picked, all }
+    } else {
+      return { selected: [], all }
     }
-    // 兜底：若解析失败或未选中任何，则回退到最近几条
-    const fallback = base.slice(-limit)
-    return { selected: fallback, all }
   } catch {
     const fallback = base.slice(-limit)
     return { selected: fallback, all }

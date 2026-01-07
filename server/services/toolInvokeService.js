@@ -16,7 +16,7 @@ export async function invoke(provider, tool, input) {
       for (const f of files) {
         try {
           const ex = await Promise.resolve(loadReference(name, String(f)))
-          extras.push(ex)
+          extras.push({ file: ex.file, meta: ex.meta || {}, content: ex.content })
         } catch {}
       }
       return { result: { key: name, extras } }
