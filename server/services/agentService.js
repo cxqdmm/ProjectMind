@@ -16,7 +16,16 @@ export async function runStream(userInput, sessionId = 'default', emit) {
   const cfg = readLLMConfig()
   const provider = createProvider(cfg)
   const systemPrompt = readAgentsPrompt()
-  const { selected: selectedMemories } = await selectSkillMemoriesForQuestion(provider, userInput, sessionId)
+  // 获取最近 10 条 user 消息作为上下文
+  const historyRaw = getSessionHistory(sessionId)
+  const recentUserInputs = (Array.isArray(historyRaw) ? historyRaw : [])
+    .filter((m) => m && m.role === 'user')
+    .slice(-10)
+    .map((m) => String(m.content || '').trim())
+    .filter(Boolean)
+  // 添加当前输入
+  recentUserInputs.push(String(userInput || '').trim())
+  const { selected: selectedMemories } = await selectSkillMemoriesForQuestion(provider, recentUserInputs, sessionId)
   const memoryMessages = buildMemoryMessages(selectedMemories)
   const memoryEvents = buildMemoryEventPayload(selectedMemories)
   const messages = [

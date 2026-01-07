@@ -52,8 +52,16 @@ export function getSkillMemories(sessionId) {
   return memoryStore.get(id) || []
 }
 
-function buildSelectorMessages(userInput, memories) {
-  const question = String(userInput || '')
+function buildSelectorMessages(userInputs, memories) {
+  const inputs = Array.isArray(userInputs) ? userInputs : [String(userInputs || '')]
+  const questionContext = inputs
+    .map((inp, idx) => {
+      const text = String(inp || '').trim()
+      if (!text) return ''
+      return inputs.length > 1 ? `[${idx + 1}] ${text}` : text
+    })
+    .filter(Boolean)
+    .join('\n')
   const items = memories.map((m) => ({
     id: m.id,
     skill: m.skill,
@@ -62,16 +70,16 @@ function buildSelectorMessages(userInput, memories) {
   }))
   const payload = JSON.stringify(
     {
-      userQuestion: question,
+      userQuestions: questionContext,
       memories: items,
       instructions:
-        'From the memories list, pick only entries that are clearly helpful to answer the userQuestion. Prefer high semantic relevance. Return ONLY a JSON array of selected ids, like ["0","2"]. If nothing is relevant, return an empty array []. Do not include any other text.',
+        'From the memories list, pick only entries that are clearly helpful to answer the userQuestions (which may include recent conversation context). Prefer high semantic relevance. Return ONLY a JSON array of selected ids, like ["0","2"]. If nothing is relevant, return an empty array []. Do not include any other text.',
     },
     null,
     2
   )
   const system =
-    'You are a selector that chooses useful memory entries for an AI assistant. ' +
+    'You are a selector that chooses useful memory entries for an AI assistant based on recent user questions and conversation context. ' +
     'You MUST respond with a single JSON array of ids and nothing else.'
   const user =
     'Here is the selection task input:\n\n' +
@@ -106,7 +114,7 @@ function parseSelectedIds(rawText) {
   return []
 }
 
-export async function selectSkillMemoriesForQuestion(provider, userInput, sessionId, limit = 5) {
+export async function selectSkillMemoriesForQuestion(provider, userInputs, sessionId, limit = 5) {
   const all = getSkillMemories(sessionId)
   if (all.length === 0) {
     return { selected: [], all }
@@ -118,7 +126,7 @@ export async function selectSkillMemoriesForQuestion(provider, userInput, sessio
     return { selected: fallback, all }
   }
   try {
-    const messages = buildSelectorMessages(userInput, base)
+    const messages = buildSelectorMessages(userInputs, base)
     const raw = await provider.chat(messages)
     const ids = parseSelectedIds(raw)
     const picked = base.filter((m) => ids.includes(m.id))
