@@ -1,0 +1,16 @@
+{
+  "id": "61c02aa15677357f",
+  "type": "skill",
+  "content": "# 这个技能能做什么\n- 解答 BBC 线下业务的关键问题：目前只能解答页面配置相关的问题\n- 提供标准话术与注意事项，帮助一线人员在沟通中给出一致、合规的答案\n\n## 参考资料\n- 页面配置参考文件：`references/pageconfig.md`\\，包含键名、含义与涉及页面，用于解释投保/人群选择/成功页等的提示与校验\n\n",
+  "snippet": "bbc问题解答: 面向 BBC（企业合作线下）保险业务的流程与规则说明。",
+  "skill": "bbc",
+  "skillDescription": "",
+  "createdAt": 1767850655509,
+  "updatedAt": 1767850655509,
+  "meta": {
+    "name": "bbc问题解答",
+    "description": "面向 BBC（企业合作线下）保险业务的流程与规则说明。",
+    "version": "1.0.0"
+  },
+  "deprecated": false
+}

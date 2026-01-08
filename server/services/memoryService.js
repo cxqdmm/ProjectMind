@@ -1,6 +1,11 @@
 // 记忆服务：基于技能内容与参考文件构建“记忆”，并在决策前检索相关记忆
 
+import { loadDocumentedMemories, createMemoryFromSkillData, saveMemory } from './memoryFileService.js'
+
 const memoryStore = new Map()
+let documentedMemoriesCache = null
+let documentedMemoriesCacheTime = 0
+const CACHE_TTL = 60000 // 1 分钟缓存
 
 function buildSkillMemoriesFromMessages(messages) {
   const raw = Array.isArray(messages) ? messages : []
@@ -40,6 +45,22 @@ export function appendSkillMemories(sessionId, messages, maxPerSession = 200) {
   const prev = memoryStore.get(id) || []
   const added = buildSkillMemoriesFromMessages(messages)
   if (!added.length) return { all: prev, added: [] }
+  // 尝试将新记忆保存为文档化记忆（可选，可以后续优化为自动保存）
+  for (const mem of added) {
+    try {
+      const skillDesc = mem.meta?.skillDescription || ''
+      const docMem = createMemoryFromSkillData(
+        mem.skill,
+        skillDesc,
+        mem.content,
+        mem.kind,
+        mem.reference || undefined,
+        mem.meta || {}
+      )
+      // 注意：这里可以选择性地保存，避免每次对话都创建文件
+      saveMemory(docMem)
+    } catch {}
+  }
   const next = [...prev, ...added]
   const trimmed =
     next.length > maxPerSession ? next.slice(next.length - maxPerSession) : next
@@ -47,9 +68,60 @@ export function appendSkillMemories(sessionId, messages, maxPerSession = 200) {
   return { all: trimmed, added }
 }
 
+function normalizeMemoryForSelection(mem) {
+  // 统一文档化记忆和运行时记忆的格式
+  return {
+    id: mem.id,
+    kind: mem.kind || mem.type,
+    type: mem.type || mem.kind,
+    skill: mem.skill,
+    reference: mem.reference,
+    content: mem.content,
+    snippet: mem.snippet,
+    meta: mem.meta || {},
+    updatedAt: mem.updatedAt || Date.now(),
+  }
+}
+
 export function getSkillMemories(sessionId) {
   const id = String(sessionId || 'default')
-  return memoryStore.get(id) || []
+  const runtime = memoryStore.get(id) || []
+  // 合并文档化记忆
+  const now = Date.now()
+  if (!documentedMemoriesCache || now - documentedMemoriesCacheTime > CACHE_TTL) {
+    documentedMemoriesCache = loadDocumentedMemories()
+    documentedMemoriesCacheTime = now
+  }
+  // 去重：相同 skill + type + reference 时，优先使用文档化记忆
+  const merged = []
+  const seen = new Map()
+  // 先添加文档化记忆
+  for (const doc of documentedMemoriesCache) {
+    const key = `${doc.skill}::${doc.type}::${doc.reference || ''}`
+    if (!seen.has(key)) {
+      seen.set(key, doc)
+      merged.push(normalizeMemoryForSelection(doc))
+    }
+  }
+  // 再添加运行时记忆（如果不存在或更新）
+  for (const rt of runtime) {
+    const key = `${rt.skill}::${rt.kind}::${rt.reference || ''}`
+    if (!seen.has(key)) {
+      merged.push(normalizeMemoryForSelection(rt))
+    } else {
+      // 如果运行时记忆更新，则替换文档化记忆
+      const doc = seen.get(key)
+      const rtTime = rt.updatedAt || Date.now()
+      const docTime = doc.updatedAt || 0
+      if (rtTime > docTime) {
+        const idx = merged.findIndex((m) => m.id === doc.id)
+        if (idx > -1) {
+          merged[idx] = normalizeMemoryForSelection(rt)
+        }
+      }
+    }
+  }
+  return merged
 }
 
 function buildSelectorMessages(userInputs, memories) {

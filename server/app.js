@@ -6,6 +6,7 @@ import { errorHandler } from './middlewares/errorHandler.js'
 import skillsRouter from './routes/skills.js'
 import agentRouter from './routes/agent.js'
 import historyRouter from './routes/history.js'
+import memoriesRouter from './routes/memories.js'
 import { getPort } from './utils/config.js'
 
 const app = express()
@@ -14,6 +15,7 @@ app.use(express.json({ limit: '2mb' }))
 app.use('/api/skills', skillsRouter)
 app.use('/api/agent', agentRouter)
 app.use('/api/history', historyRouter)
+app.use('/api/memories', memoriesRouter)
 app.use(errorHandler)
 
 const port = getPort()
