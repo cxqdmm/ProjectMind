@@ -1,0 +1,47 @@
+# agent-memory Specification
+
+## Purpose
+TBD - created by archiving change add-agent-memory-management. Update Purpose after archive.
+## Requirements
+### Requirement: Agent 必须在决策前检索相关记忆（仅针对技能内容/参考文件）
+Agent SHALL 在处理用户请求时，在调用 skills / tools / 其他能力前，基于当前问题与上下文检索“技能内容与技能参考文件”的记忆条目，并将命中的记忆作为大模型决策上下文的一部分；普通对话文本不纳入记忆。
+
+#### Scenario: 基于当前问题检索相关记忆
+- **WHEN** 用户在同一会话中提出一个与历史对话或配置相关的问题
+- **THEN** Agent SHALL 使用「当前用户问题 + 会话上下文」作为检索条件
+- **AND** SHALL 从记忆存储中检索出与该问题高度相关的记忆条目
+- **AND** SHALL 在调用大模型生成回复前，将这些记忆以结构化形式拼接进提示/上下文
+
+#### Scenario: 当前问题无相关记忆
+- **WHEN** 记忆存储中不存在与当前问题足够相似或相关的记忆
+- **THEN** Agent SHALL 继续正常决策流程（如调用 skills / tools 或直接回复）
+- **AND** SHALL 不因为缺少记忆而报错或中断
+
+### Requirement: Agent 需要维护基础的记忆管理策略（技能相关记忆）
+Agent SHALL 对技能相关记忆（技能内容与技能参考文件的提取片段）进行基础管理，包括写入、更新与废弃策略，以避免膨胀或污染。
+
+#### Scenario: 写入新的技能相关记忆
+- **WHEN** 有新的技能内容或技能参考文件被更新/新增，或首次被使用需要缓存记忆
+- **THEN** Agent 或后端组件 SHALL 能将相关片段写入记忆存储，并记录元数据（如所属技能、来源文件、摘要）
+
+#### Scenario: 记忆的更新与废弃
+- **WHEN** 技能内容或参考文件被修改、废弃，或某条技能相关记忆被判定为无效/过时
+- **THEN** Agent SHALL 能够更新或废弃对应记忆
+- **AND** SHALL 确保后续检索优先使用最新有效的技能相关记忆
+
+### Requirement: 记忆层独立于 skills 但先于技能调用执行
+记忆检索 SHALL 由独立的记忆层负责，接口可参考 skills，但在 Agent 编排中 SHALL 在调用任何 skills/tools 之前执行，并向大模型返回结构化记忆上下文。
+
+#### Scenario: 记忆层执行顺序
+- **WHEN** Agent 收到用户请求并准备进入决策/调用阶段
+- **THEN** Agent SHALL 首先调用记忆层进行“技能相关记忆”的检索与选择
+- **AND** SHALL 将检索到的记忆上下文提供给大模型，再继续 skills/tools 的选择与调用
+
+### Requirement: 记忆展示事件与前端组件
+系统 SHALL 通过事件输出“使用的记忆摘要”，前端 SHALL 提供记忆展示组件，使用户可看到本轮命中的记忆（例如技能名、来源文件、摘要），用于可解释性与调试。
+
+#### Scenario: 输出使用的记忆事件
+- **WHEN** 本轮决策使用了技能相关记忆
+- **THEN** Agent SHALL 在事件流中输出一条“使用的记忆”事件，包含命中条目的摘要（如技能名、来源文件、片段摘要/ID）
+- **AND** 前端 SHALL 能通过记忆展示组件呈现这些信息，供用户或开发者查看
+
