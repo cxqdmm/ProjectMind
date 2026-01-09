@@ -14,12 +14,13 @@
   "dependencies": {
     "@langchain/ollama": "^1.0.0",
     "@langchain/openai": "^1.0.0",
+    "@modelcontextprotocol/sdk": "^1.25.2",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
     "langchain": "^1.0.1",
     "nodemon": "^3.1.10",
     "openai": "^6.6.0",
-    "zod": "^4.1.12"
+    "zod": "^4.3.5"
   }
 }

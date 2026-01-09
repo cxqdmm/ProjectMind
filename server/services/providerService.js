@@ -9,7 +9,7 @@ export function createProvider(config, selection) {
   const modelName = String(selection?.model || item?.model || '')
   const apiKey = getModelApiKey(item?.key)
   const isFake = Boolean(process.env.FAKE_LLM)
-  async function chat(messages) {
+  async function chat(messages, tools = []) {
     if (isFake) {
       const hasInjected = Array.isArray(messages) && messages.some((m) => {
         const s = String(m?.content || '')
@@ -25,10 +25,36 @@ export function createProvider(config, selection) {
     const headers = { 'Content-Type': 'application/json' }
     if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`
     const body = { model: modelName, messages }
+    
+    // 如果有工具，加入 body
+    if (Array.isArray(tools) && tools.length > 0) {
+      // 过滤掉内部字段 __mcpServer
+      body.tools = tools.map(t => ({
+        type: t.type,
+        function: t.function
+      }))
+    }
+    
     const r = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) })
     if (!r.ok) throw new Error('chat completion failed')
     const data = await r.json()
-    return String(data?.choices?.[0]?.message?.content || '')
+    
+    // 优先返回 tool_calls
+    const choice = data?.choices?.[0]
+    const toolCalls = choice?.message?.tool_calls
+    if (Array.isArray(toolCalls) && toolCalls.length > 0) {
+      // 转换为内部协议格式 CALL_JSONS
+      // 这是一个简单的适配，将 Native Tool Call 转为我们内部的协议格式
+      // 以便复用 parseToolCalls 和后续流程
+      const calls = toolCalls.map(tc => ({
+        provider: 'mcp', // 标记为 MCP 调用
+        tool: tc.function.name,
+        input: JSON.parse(tc.function.arguments || '{}')
+      }))
+      return `CALL_JSONS: ${JSON.stringify(calls)}`
+    }
+    
+    return String(choice?.message?.content || '')
   }
   return {
     chat,

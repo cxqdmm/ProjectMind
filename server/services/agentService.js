@@ -7,13 +7,21 @@ import { readAgentsPrompt } from './promptService.js'
 import { selectSkillMemoriesForQuestion, buildMemoryMessages, buildMemoryEventPayload, appendSkillMemories } from './memoryService.js'
 import { getSessionHistory, appendSessionSegments } from './historyService.js'
 
-async function createChatReply(provider, messages) {
-  const content = await provider.chat(messages)
+import { initMcpClients, getMcpTools, callMcpTool } from './mcpService.js'
+
+async function createChatReply(provider, messages, tools) {
+  const content = await provider.chat(messages, tools)
   return { choices: [{ message: { content } }] }
 }
 
 export async function runStream(userInput, sessionId = 'default', emit, selection) {
   const cfg = readLLMConfig()
+  
+  // 初始化 MCP (按需连接，仅首次)
+  await initMcpClients()
+  // 获取 MCP 工具
+  const mcpTools = await getMcpTools()
+  
   const provider = createProvider(cfg, selection)
   const systemPrompt = readAgentsPrompt()
   // 获取最近 10 条 user 消息作为上下文
@@ -40,7 +48,7 @@ export async function runStream(userInput, sessionId = 'default', emit, selectio
   }
   while (true) {
 
-    const completion = await createChatReply(provider, messages)
+    const completion = await createChatReply(provider, messages, mcpTools)
     const reply = String(completion?.choices?.[0]?.message?.content || '')
     const calls = parseToolCalls(reply) || []
     if (calls.length > 0) {
@@ -61,10 +69,30 @@ export async function runStream(userInput, sessionId = 'default', emit, selectio
         const id = prepared[i].id
         const t0 = Date.now()
         try {
-          const inv = await invokeTool(c.provider, c.tool, c.input)
-          const toolResult = inv?.result ?? inv
+          let toolResult = null
+          // 分发工具调用：MCP vs OpenSkills
+          if (c.provider === 'mcp') {
+            // MCP 工具
+            toolResult = await callMcpTool(c.tool, c.input)
+            // 简单处理结果，这里假设 result 是对象或文本
+            // 如果是对象，可能包含 content 数组等，根据需要序列化
+            // 这里为了简化，直接 JSON.stringify
+            // 注意：Agent 期望看到的是字符串结果以便思考
+            if (typeof toolResult !== 'string') {
+                toolResult = JSON.stringify(toolResult)
+            }
+          } else {
+            // 内部 OpenSkills
+            const inv = await invokeTool(c.provider, c.tool, c.input)
+            toolResult = inv?.result ?? inv
+          }
+          
           emit({ type: 'tool_update', id, status: 'completed', result: toolResult, completedAt: Date.now(), durationMs: Date.now() - t0 })
-          if (c.tool === 'openskills.read') {
+          
+          if (c.provider === 'mcp') {
+            // MCP 结果直接作为 tool 结果回填
+            openMsgs.push({ role: 'tool', toolName: c.tool, content: String(toolResult) })
+          } else if (c.tool === 'openskills.read') {
             const skill = String(toolResult?.key || '')
             const body = String(toolResult?.body || '')
             const meta = toolResult?.meta || {}
@@ -85,6 +113,17 @@ export async function runStream(userInput, sessionId = 'default', emit, selectio
       }
       const { added } = appendSkillMemories(sessionId, openMsgs)
       const loopMemoryMessages = buildMemoryMessages(added)
+      // 对于 MCP 工具结果，我们也作为普通消息追加，但这里需要区分
+      // openMsgs 包含了 openSkill 类型的，也包含了我们新加的 tool 类型的
+      // appendSkillMemories 目前只处理 openSkill
+      // 我们需要手动把 tool 类型的消息加进去，或者改造 appendSkillMemories
+      // 这里为了最小改动，直接把 tool 类型的消息追加到 messages
+      for (const m of openMsgs) {
+        if (m.role === 'tool') {
+            messages.push({ role: 'user', content: `Tool ${m.toolName} output: ${m.content}` })
+        }
+      }
+      
       for (const mm of loopMemoryMessages) messages.push(mm)
       step++
       continue
