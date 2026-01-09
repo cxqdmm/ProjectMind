@@ -8,20 +8,32 @@ export function getPort() {
 
 export function readLLMConfig() {
   return {
-    qwen: {
-      baseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-      model: 'qwen-plus',
-    },
+    models: [
+      {
+        key: 'qwen',
+        label: 'Qwen',
+        provider: 'qwen',
+        baseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+        model: 'qwen-plus',
+        envKey: 'QWEN_API_KEY',
+      },
+      {
+        key: 'zhipuai',
+        label: 'ZhipuAI',
+        provider: 'zhipuai',
+        baseURL: 'https://open.bigmodel.cn/api/paas/v4/',
+        model: 'glm-4.7',
+        envKey: 'ZHIPUAI_API_KEY',
+      },
+    ],
     historyMaxTurns: 100,
   }
 }
 
-export function getLLMApiKey() {
-  const envKey =
-    process.env.QWEN_API_KEY ||
-    process.env.DASHSCOPE_API_KEY ||
-    process.env.QWEN_APIKEY ||
-    process.env.LLM_API_KEY ||
-    ''
-  return String(envKey || '')
+export function getModelApiKey(modelKey) {
+  const cfg = readLLMConfig()
+  const key = String(modelKey || '').toLowerCase()
+  const item = (Array.isArray(cfg?.models) ? cfg.models : []).find((m) => String(m?.key || '').toLowerCase() === key)
+  const v = process.env[item.envKey]
+  return v
 }

@@ -9,6 +9,8 @@ const router = Router()
 router.post('/stream', async (req, res) => {
   const userInput = String(req.body?.userInput || '')
   const sessionId = String(req.body?.sessionId || 'default')
+  const provider = req.body?.provider ? String(req.body.provider) : undefined
+  const model = req.body?.model ? String(req.body.model) : undefined
   if (!userInput) return res.status(400).end()
   res.setHeader('Content-Type', 'text/event-stream')
   res.setHeader('Cache-Control', 'no-cache')
@@ -19,7 +21,7 @@ router.post('/stream', async (req, res) => {
     } catch {}
   }
   try {
-    await runAgentStream(userInput, sessionId, send)
+    await runAgentStream(userInput, sessionId, send, { provider, model })
     send({ type: 'end' })
     res.end()
   } catch (e) {

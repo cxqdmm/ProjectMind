@@ -28,6 +28,30 @@
               </div>
             </div>
           </div>
+          <button class="tool-btn" @click="onModelsToggle" title="模型">
+            <svg viewBox="0 0 24 24" width="18" height="18" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M12 3l9 5v8l-9 5-9-5V8l9-5zm0 2.2L6 8l6 3.3L18 8 12 5.2zm7 5.6l-7 3.9-7-3.9v4.4l7 3.9 7-3.9v-4.4z" fill="#111827"/></svg>
+            {{ currentModelLabel || '模型' }}
+          </button>
+          <div v-show="modelsOpen" ref="modelsDropdownRef" class="skills-dropdown">
+            <div class="skills-head">
+              <span>可用模型</span>
+              <button class="refresh-btn" @click="onModelsRefresh" :disabled="modelsLoading">{{ modelsLoading ? '加载中…' : '刷新' }}</button>
+            </div>
+            <div class="skills-body">
+              <div v-if="modelsError" class="skills-empty">加载失败</div>
+              <div v-else-if="modelsLoading" class="skills-empty">加载中…</div>
+              <div v-else-if="!models.length" class="skills-empty">暂无模型</div>
+              <div v-else class="skills-list">
+                <div v-for="m in models" :key="m.id" class="skill-item">
+                  <div class="skill-text">
+                    <div class="skill-name">{{ m.label }}</div>
+                    <div class="skill-desc">{{ m.provider }} · {{ m.model }}</div>
+                  </div>
+                  <button class="skill-insert" :disabled="!m.enabled" @click="onChooseModel(m)">{{ m.enabled ? '选择' : '不可用' }}</button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </header>
@@ -123,6 +147,13 @@ const skills = ref([])
 const skillsLoading = ref(false)
 const skillsError = ref('')
 const skillsDropdownRef = ref(null)
+const modelsOpen = ref(false)
+const models = ref([])
+const modelsLoading = ref(false)
+const modelsError = ref('')
+const modelsDropdownRef = ref(null)
+const selectedModel = ref(null)
+const currentModelLabel = ref('')
 
 function scrollToBottom() {
   nextTick(() => {
@@ -182,6 +213,55 @@ function onInsertSkill(name) {
   if (!t) return
   input.value = input.value ? input.value + ' ' + t : t
   skillsOpen.value = false
+}
+async function fetchModels() {
+  try {
+    modelsLoading.value = true
+    modelsError.value = ''
+    const r = await fetch('http://localhost:3334/api/models')
+    const j = await r.json()
+    const arr = Array.isArray(j?.models) ? j.models : []
+    models.value = arr.map(x => ({
+      id: String(x?.id || ''),
+      label: String(x?.label || ''),
+      provider: String(x?.provider || ''),
+      model: String(x?.model || ''),
+      baseURL: String(x?.baseURL || ''),
+      enabled: Boolean(x?.enabled),
+    }))
+    const cur = selectedModel.value
+    if (cur) {
+      const found = models.value.find(m => m.provider === cur.provider && m.model === cur.model)
+      currentModelLabel.value = found ? found.label : ''
+    } else {
+      const firstEnabled = models.value.find(m => m.enabled)
+      if (firstEnabled) {
+        selectedModel.value = { provider: firstEnabled.provider, model: firstEnabled.model }
+        currentModelLabel.value = firstEnabled.label
+      } else {
+        currentModelLabel.value = ''
+      }
+    }
+  } catch (e) {
+    modelsError.value = '加载失败'
+  } finally {
+    modelsLoading.value = false
+  }
+}
+function onModelsToggle() {
+  modelsOpen.value = !modelsOpen.value
+  if (modelsOpen.value && models.value.length === 0 && !modelsLoading.value) {
+    fetchModels()
+  }
+}
+function onModelsRefresh() {
+  fetchModels()
+}
+function onChooseModel(m) {
+  if (!m?.enabled) return
+  selectedModel.value = { provider: m.provider, model: m.model }
+  currentModelLabel.value = m.label
+  modelsOpen.value = false
 }
 
 function buildToolView(events) {
@@ -358,7 +438,13 @@ async function onSend() {
     const placeholder = { role: 'assistant', content: [{ type: 'text', text: '处理中…' }], citations: [], pending: true }
     messages.value.push(placeholder)
     const idx = messages.value.length - 1
-    const r = await fetch('http://localhost:3334/api/agent/stream', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userInput: text, sessionId: sessionId.value }) })
+    const body = {
+      userInput: text,
+      sessionId: sessionId.value,
+      provider: selectedModel.value?.provider,
+      model: selectedModel.value?.model,
+    }
+    const r = await fetch('http://localhost:3334/api/agent/stream', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
     const reader = r.body.getReader()
     const decoder = new TextDecoder()
     let hadPlaceholder = false
@@ -428,13 +514,18 @@ onMounted(() => {
   addMessage('assistant', '你好！我是智能助手，可以帮助你解决问题。\n\n请输入你的需求开始吧。')
   document.addEventListener('click', (ev) => {
     const el = skillsDropdownRef.value
+    const el2 = modelsDropdownRef.value
     const toolbar = document.querySelector('.toolbar')
     if (!el || !toolbar) return
     const target = ev.target
     if (skillsOpen.value && target && !toolbar.contains(target)) {
       skillsOpen.value = false
     }
+    if (modelsOpen.value && target && !toolbar.contains(target)) {
+      modelsOpen.value = false
+    }
   })
+  fetchModels()
 })
 
 // api key handling removed

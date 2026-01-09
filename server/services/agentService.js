@@ -12,9 +12,9 @@ async function createChatReply(provider, messages) {
   return { choices: [{ message: { content } }] }
 }
 
-export async function runStream(userInput, sessionId = 'default', emit) {
+export async function runStream(userInput, sessionId = 'default', emit, selection) {
   const cfg = readLLMConfig()
-  const provider = createProvider(cfg)
+  const provider = createProvider(cfg, selection)
   const systemPrompt = readAgentsPrompt()
   // 获取最近 10 条 user 消息作为上下文
   const historyRaw = getSessionHistory(sessionId)

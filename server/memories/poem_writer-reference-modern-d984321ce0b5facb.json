@@ -1,0 +1,16 @@
+{
+  "id": "d984321ce0b5facb",
+  "type": "reference",
+  "content": "现代诗写作要点：\n- 意象连贯：核心意象贯穿全文，避免散乱堆砌\n- 节奏掌控：自由换行，但保持段落内节奏与重复的统一\n- 语言凝练：少量形容词与副词，强调动词与名词的张力\n- 隐喻与留白：适度象征与隐喻，保留读者理解空间\n\n",
+  "snippet": "现代诗: 意象连贯、自由换行、节奏与重复、隐喻与留白",
+  "skill": "poem_writer",
+  "skillDescription": "",
+  "reference": "references/modern.md",
+  "createdAt": 1767925849122,
+  "updatedAt": 1767925849122,
+  "meta": {
+    "name": "现代诗",
+    "description": "意象连贯、自由换行、节奏与重复、隐喻与留白"
+  },
+  "deprecated": false
+}
