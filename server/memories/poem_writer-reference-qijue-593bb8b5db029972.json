@@ -1,0 +1,16 @@
+{
+  "id": "593bb8b5db029972",
+  "type": "reference",
+  "content": "七言绝句写作要点：\n- 结构：四句七字，句式整齐\n- 节奏：三四字处自然停顿，形成内在节拍\n- 押韵：统一韵部，起句可不押，收尾有力度\n- 意象：选择具象而不繁杂，意境清晰\n\n",
+  "snippet": "七言绝句: 四句七字，节奏稳健，押韵规范，尾句有力",
+  "skill": "poem_writer",
+  "skillDescription": "",
+  "reference": "references/qijue.md",
+  "createdAt": 1767928174267,
+  "updatedAt": 1767928174267,
+  "meta": {
+    "name": "七言绝句",
+    "description": "四句七字，节奏稳健，押韵规范，尾句有力"
+  },
+  "deprecated": false
+}

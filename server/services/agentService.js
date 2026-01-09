@@ -30,6 +30,7 @@ export async function runStream(userInput, sessionId = 'default', emit, selectio
   const memoryEvents = buildMemoryEventPayload(selectedMemories)
   const messages = [
     { role: 'system', content: systemPrompt },
+    ...historyRaw,
     ...memoryMessages,
     { role: 'user', content: userInput },
   ]
