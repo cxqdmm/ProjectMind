@@ -89,3 +89,35 @@ export function loadReference(name, file) {
   const { meta, body } = parseFrontmatter(txt)
   return { file: rel, meta, content: body, rawContent: txt }
 }
+
+export async function callSkillScript(skillName, scriptPath, params) {
+  const key = String(skillName || '').trim()
+  const script = String(scriptPath || '').trim()
+  if (!key || !script) throw new Error('skill name and script path required')
+  
+  // 验证脚本路径安全
+  if (!script.startsWith('scripts/')) throw new Error('script path must start with scripts/')
+  if (script.includes('..')) throw new Error('invalid script path')
+  
+  const dir = resolveSkillDir(key)
+  if (!dir) throw new Error('skill not found')
+  
+  // 安全地构建脚本路径
+  const fp = safeJoin(dir, script)
+  if (!fp) throw new Error('invalid script path')
+  
+  // 检查文件是否存在
+  if (!fs.existsSync(fp)) throw new Error(`script not found: ${script}`)
+  
+  try {
+    // 动态加载并执行脚本函数
+    const mod = await import(fp)
+    const fn = mod.default || mod.run
+    if (typeof fn !== 'function') throw new Error(`script ${script} 没有导出函数`)
+    
+    // 执行函数并返回结果
+    return await fn(params)
+  } catch (e) {
+    throw new Error(`脚本执行失败: ${e.message}`)
+  }
+}

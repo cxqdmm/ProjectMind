@@ -8,13 +8,13 @@ export function getMcpServers() {
   // 默认不配置，由用户根据需要开启
   // 这里作为示例，如果需要可以开启 git/filesystem
   return {
-    "git": {
-      command: "npx",
-      args: ["-y", "@modelcontextprotocol/server-git"]
-    },
-    "filesystem": {
-      command: "npx",
-      args: ["-y", "@modelcontextprotocol/server-filesystem", process.cwd()]
-    }
+    // "git": {
+    //   command: "npx",
+    //   args: ["-y", "@modelcontextprotocol/server-git"]
+    // },
+    // "filesystem": {
+    //   command: "npx",
+    //   args: ["-y", "@modelcontextprotocol/server-filesystem", process.cwd()]
+    // }
   }
 }

@@ -106,9 +106,41 @@ export async function runStream(userInput, sessionId = 'default', emit, selectio
               const meta = ex?.meta || {}
               if (content) openMsgs.push({ role: 'openSkill', toolName: 'readReference', skill, reference: name, content, meta })
             }
+          } else if (c.tool === 'openskills.call') {
+            // 处理脚本函数调用结果
+            const skill = String(c.input?.skill || '')
+            const script = String(c.input?.script || '')
+            const result = toolResult
+            if (result) {
+              openMsgs.push({ 
+                role: 'openSkill', 
+                toolName: 'call', 
+                skill, 
+                script,
+                content: String(typeof result === 'object' ? JSON.stringify(result, null, 2) : result),
+                meta: { type: typeof result }
+              })
+            }
           }
         } catch (e) {
-          emit({ type: 'tool_update', id, status: 'failed', error: String(e?.message || e), completedAt: Date.now(), durationMs: Date.now() - t0 })
+          const errorMsg = String(e?.message || e)
+          emit({ type: 'tool_update', id, status: 'failed', error: errorMsg, completedAt: Date.now(), durationMs: Date.now() - t0 })
+          // 将错误信息添加到 openMsgs 中，让 AI 能够知道工具调用失败的原因
+          if (c.provider === 'openskills') {
+            openMsgs.push({ 
+              role: 'openSkill', 
+              toolName: c.tool, 
+              skill: String(c.input?.skill || ''), 
+              content: `工具调用失败: ${errorMsg}`,
+              meta: { status: 'failed', error: errorMsg }
+            })
+          } else if (c.provider === 'mcp') {
+            openMsgs.push({ 
+              role: 'tool', 
+              toolName: c.tool, 
+              content: `工具调用失败: ${errorMsg}`
+            })
+          }
         }
       }
       const { added } = appendSkillMemories(sessionId, openMsgs)

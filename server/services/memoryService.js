@@ -18,14 +18,25 @@ function buildSkillMemoriesFromMessages(messages) {
     const reference = String(m.reference || '').trim()
     const content = String(m.content || '')
     if (!content) continue
-    if (tool === 'read' || tool === 'readReference') {
-      const kind = tool === 'read' ? 'skill' : 'reference'
+    
+    if (tool === 'read' || tool === 'readReference' || tool === 'call') {
+      const kind = tool === 'read' ? 'skill' : tool === 'readReference' ? 'reference' : 'call'
       const id = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${i}`
       const meta = m.meta || {}
-      const name = String(meta.name || '').trim()
-      const description = String(meta.description || '').trim()
-      // 使用 meta.name 和 meta.description 作为 snippet，如果没有则回退到 content 截断
-      let snippet = `${name}: ${description}`
+      
+      let snippet = ''
+      if (tool === 'call') {
+        // 对于 call 类型，使用脚本名称和结果类型作为 snippet
+        const script = String(m.script || 'unknown')
+        const resultType = String(meta.type || 'unknown')
+        snippet = `${skill} 调用脚本 ${script} (类型: ${resultType})`
+      } else {
+        // 对于 read/readReference 类型，使用原有的逻辑
+        const name = String(meta.name || '').trim()
+        const description = String(meta.description || '').trim()
+        snippet = `${name}: ${description}`
+      }
+      
       memories.push({
         id,
         kind,
@@ -34,6 +45,7 @@ function buildSkillMemoriesFromMessages(messages) {
         content,
         snippet,
         meta,
+        script: tool === 'call' ? String(m.script || '') : undefined, // 保存脚本信息用于 call 类型
       })
     }
   }
@@ -219,9 +231,21 @@ export function buildMemoryMessages(selected) {
     const lines = []
     const skill = m.skill || ''
     const ref = m.reference || ''
-    const header = ref
-      ? `已加载技能「${skill || '未知技能'}」的参考文件「${ref}，内容是：`
-      : `已加载技能「${skill || '未知技能'}」的正文，内容是：`
+    const script = m.script || ''
+    const kind = m.kind || ''
+    
+    let header = ''
+    if (kind === 'call') {
+      // call 类型的特殊处理
+      header = `已执行技能「${skill || '未知技能'}」的脚本「${script || '未知脚本'}」，结果是：`
+    } else if (ref) {
+      // readReference 类型
+      header = `已加载技能「${skill || '未知技能'}」的参考文件「${ref}」，内容是：`
+    } else {
+      // read 类型（默认）
+      header = `已加载技能「${skill || '未知技能'}」的正文，内容是：`
+    }
+    
     lines.push(header)
     lines.push('')
     lines.push(m.content || '')
