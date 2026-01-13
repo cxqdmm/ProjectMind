@@ -91,7 +91,7 @@ export async function run({ repoUrl, branch1, branch2 }) {
 
     // 生成描述信息
     const repoName = repoUrl.split('/').pop()?.replace('.git', '') || '未知项目';
-    const desc = `${repoName} 项目 ${branch1} 分支和 ${branch2} 分支 diff 后的差异文件列表`;
+    const desc = `${repoName} 项目 ${branch1} 分支和 ${branch2} 分支 diff 后的变更文件列表内容如下：`;
 
     return {
       files: files,

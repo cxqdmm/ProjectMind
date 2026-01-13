@@ -5,7 +5,7 @@
       <span class="memory-subtitle">本轮使用的技能记忆</span>
     </div>
     <div class="memory-list">
-      <div v-for="m in items" :key="m.id" class="memory-item">
+      <div v-for="(m, idx) in items" :key="m.key || `${m.skill || ''}::${m.toolName || ''}::${m.reference || ''}::${m.script || ''}::${idx}`" class="memory-item">
         <div class="memory-item-title">
           <span class="memory-item-skill">{{ m.skill || '未知技能' }}</span>
           <span v-if="m.reference" class="memory-item-ref">{{ m.reference }}</span>

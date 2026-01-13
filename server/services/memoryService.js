@@ -7,42 +7,74 @@ let documentedMemoriesCache = null
 let documentedMemoriesCacheTime = 0
 const CACHE_TTL = 60000 // 1 分钟缓存
 
+function safeStringify(val) {
+  if (typeof val === 'string') return val
+  try {
+    return JSON.stringify(val, null, 2)
+  } catch {
+    return String(val ?? '')
+  }
+}
+
+function tryParseJsonObject(text) {
+  const t = String(text || '').trim()
+  if (!t) return null
+  if (!(t.startsWith('{') && t.endsWith('}'))) return null
+  try {
+    const obj = JSON.parse(t)
+    return obj && typeof obj === 'object' ? obj : null
+  } catch {
+    return null
+  }
+}
+
 function buildSkillMemoriesFromMessages(messages) {
   const raw = Array.isArray(messages) ? messages : []
   const memories = []
   for (let i = 0; i < raw.length; i++) {
     const m = raw[i]
     if (!m || m.role !== 'openSkill') continue
-    const tool = String(m.toolName || '')
+    const toolName = String(m.toolName || '')
     const skill = String(m.skill || '').trim()
     const reference = String(m.reference || '').trim()
-    if (!m.content) continue
-    
-    if (tool === 'read' || tool === 'readReference' || tool === 'call') {
-      const kind = tool === 'read' ? 'skill' : tool === 'readReference' ? 'reference' : 'call'
-      const meta = m.meta || {}
-      
-      let snippet = ''
-      if (tool === 'call') {
-        // 对于 call 类型，使用desc作为 snippet
-        snippet = m.content.desc
-      } else {
-        // 对于 read/readReference 类型，使用原有的逻辑
-        const name = String(meta.name || '').trim()
-        const description = String(meta.description || '').trim()
-        snippet = `${name}: ${description}`
+    const rawContent = m.content
+    if (rawContent == null) continue
+
+    if (toolName !== 'read' && toolName !== 'readReference' && toolName !== 'call') continue
+
+    const now = Date.now()
+    const meta = m.meta && typeof m.meta === 'object' ? m.meta : {}
+    const script = toolName === 'call' ? String(m.script || '') : ''
+
+    const contentText = safeStringify(rawContent)
+
+    let snippet = ''
+    let nextMeta = meta
+    if (toolName === 'call') {
+      const obj = typeof rawContent === 'object' && rawContent ? rawContent : tryParseJsonObject(contentText)
+      const desc = String(obj?.desc || meta?.desc || '').trim()
+      snippet = desc || `${skill} 调用脚本 ${script || '未知脚本'}`
+      nextMeta = { ...meta, desc }
+    } else {
+      const name = String(meta.name || '').trim()
+      const description = String(meta.description || '').trim()
+      snippet = `${name}${description ? `: ${description}` : ''}`.trim()
+      if (!snippet) {
+        snippet = contentText.slice(0, 120)
       }
-      
-      memories.push({
-        kind,
-        skill,
-        reference,
-        content: m.content,
-        snippet,
-        meta,
-        script: tool === 'call' ? String(m.script || '') : undefined, // 保存脚本信息用于 call 类型
-      })
     }
+
+    memories.push({
+      toolName,
+      skill,
+      reference: toolName === 'readReference' ? reference : '',
+      script: toolName === 'call' ? script : '',
+      content: contentText,
+      snippet,
+      meta: nextMeta,
+      createdAt: now,
+      updatedAt: now,
+    })
   }
   return memories
 }
@@ -69,12 +101,17 @@ export function appendSkillMemories(sessionId, messages, maxPerSession = 200) {
 
 function normalizeMemoryForSelection(mem) {
   // 统一文档化记忆和运行时记忆的格式
+  const toolName = String(
+    mem.toolName ||
+      (mem.type === 'skill' ? 'read' : mem.type === 'reference' ? 'readReference' : mem.type === 'call' ? 'call' : '')
+  )
+  const key = `${mem.skill || ''}::${toolName}::${mem.reference || ''}::${mem.script || ''}`
   return {
-    id: mem.id,
-    kind: mem.kind || mem.type,
-    type: mem.type || mem.kind,
+    key,
+    toolName,
     skill: mem.skill,
     reference: mem.reference,
+    script: mem.script,
     content: mem.content,
     snippet: mem.snippet,
     meta: mem.meta || {},
@@ -91,29 +128,29 @@ export function getSkillMemories(sessionId) {
     documentedMemoriesCache = loadDocumentedMemories()
     documentedMemoriesCacheTime = now
   }
-  // 去重：相同 skill + type + reference 时，优先使用文档化记忆
+  // 去重：相同 skill + toolName + reference + script 时，优先使用文档化记忆
   const merged = []
   const seen = new Map()
   // 先添加文档化记忆
   for (const doc of documentedMemoriesCache) {
-    const key = `${doc.skill}::${doc.type}::${doc.reference || ''}`
-    if (!seen.has(key)) {
-      seen.set(key, doc)
+    const nd = normalizeMemoryForSelection(doc)
+    if (!seen.has(nd.key)) {
+      seen.set(nd.key, nd)
       merged.push(normalizeMemoryForSelection(doc))
     }
   }
   // 再添加运行时记忆（如果不存在或更新）
   for (const rt of runtime) {
-    const key = `${rt.skill}::${rt.kind}::${rt.reference || ''}`
-    if (!seen.has(key)) {
+    const nr = normalizeMemoryForSelection(rt)
+    if (!seen.has(nr.key)) {
       merged.push(normalizeMemoryForSelection(rt))
     } else {
       // 如果运行时记忆更新，则替换文档化记忆
-      const doc = seen.get(key)
+      const doc = seen.get(nr.key)
       const rtTime = rt.updatedAt || Date.now()
       const docTime = doc.updatedAt || 0
       if (rtTime > docTime) {
-        const idx = merged.findIndex((m) => m.id === doc.id)
+        const idx = merged.findIndex((m) => m.key === doc.key)
         if (idx > -1) {
           merged[idx] = normalizeMemoryForSelection(rt)
         }
@@ -133,10 +170,12 @@ function buildSelectorMessages(userInputs, memories) {
     })
     .filter(Boolean)
     .join('\n')
-  const items = memories.map((m) => ({
-    id: m.id,
+  const items = memories.map((m, idx) => ({
+    idx,
+    toolName: m.toolName,
     skill: m.skill,
     reference: m.reference,
+    script: m.script,
     snippet: m.snippet,
   }))
   const payload = JSON.stringify(
@@ -144,7 +183,7 @@ function buildSelectorMessages(userInputs, memories) {
       userQuestions: questionContext,
       memories: items,
       instructions:
-        'From the memories list, pick only entries that are clearly helpful to answer the userQuestions (which may include recent conversation context). Prefer high semantic relevance. Return ONLY a JSON array of selected ids, like ["0","2"]. If nothing is relevant, return an empty array []. Do not include any other text.',
+        'From the memories list, pick only entries that are clearly helpful to answer the userQuestions (which may include recent conversation context). Prefer high semantic relevance. Return ONLY a JSON array of selected idx numbers, like [0,2]. If nothing is relevant, return an empty array []. Do not include any other text.',
     },
     null,
     2
@@ -169,7 +208,7 @@ function parseSelectedIds(rawText) {
     // 直接整体解析
     const full = JSON.parse(txt)
     if (Array.isArray(full)) {
-      return full.map((x) => String(x))
+      return full.map((x) => Number(x)).filter((x) => Number.isFinite(x))
     }
   } catch {}
   // 回退：尝试从文本中提取第一个 JSON 数组片段
@@ -178,7 +217,7 @@ function parseSelectedIds(rawText) {
     try {
       const arr = JSON.parse(match[0])
       if (Array.isArray(arr)) {
-        return arr.map((x) => String(x))
+        return arr.map((x) => Number(x)).filter((x) => Number.isFinite(x))
       }
     } catch {}
   }
@@ -199,8 +238,8 @@ export async function selectSkillMemoriesForQuestion(provider, userInputs, sessi
   try {
     const messages = buildSelectorMessages(userInputs, base)
     const raw = await provider.chat(messages)
-    const ids = parseSelectedIds(raw)
-    const picked = base.filter((m) => ids.includes(m.id))
+    const idxs = parseSelectedIds(raw)
+    const picked = base.filter((_, idx) => idxs.includes(idx))
     if (picked.length > 0) {
       return { selected: picked, all }
     } else {
@@ -219,20 +258,18 @@ export function buildMemoryMessages(selected) {
     const skill = m.skill || ''
     const ref = m.reference || ''
     const script = m.script || ''
-    const kind = m.kind || ''
-    
+    const toolName = m.toolName || ''
+    const desc = String(m.meta?.desc || '').trim()
+
     let header = ''
-    if (kind === 'call') {
-      // call 类型的特殊处理
-      header = `已执行技能「${skill || '未知技能'}」的脚本「${script || '未知脚本'}」，结果是：`
-    } else if (ref) {
-      // readReference 类型
+    if (toolName === 'call') {
+      header = `已执行技能「${skill || '未知技能'}」的脚本「${script || '未知脚本'}」${desc ? `（${desc}）` : ''}，结果是：`
+    } else if (toolName === 'readReference') {
       header = `已加载技能「${skill || '未知技能'}」的参考文件「${ref}」，内容是：`
     } else {
-      // read 类型（默认）
       header = `已加载技能「${skill || '未知技能'}」的正文，内容是：`
     }
-    
+
     lines.push(header)
     lines.push('')
     lines.push(m.content || '')
@@ -247,12 +284,12 @@ export function buildMemoryEventPayload(selected) {
   const arr = Array.isArray(selected) ? selected : []
   const now = Date.now()
   return arr.map((m) => ({
-    id: m.id,
-    kind: m.kind,
+    key: m.key,
+    toolName: m.toolName,
     skill: m.skill,
     reference: m.reference,
+    script: m.script,
     snippet: m.snippet,
     timestamp: now,
   }))
 }
-
