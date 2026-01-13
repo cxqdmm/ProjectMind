@@ -117,7 +117,7 @@ export async function runStream(userInput, sessionId = 'default', emit, selectio
                 toolName: 'call', 
                 skill, 
                 script,
-                content: String(typeof result === 'object' ? JSON.stringify(result, null, 2) : result),
+                content: result,
                 meta: { type: typeof result }
               })
             }

@@ -89,6 +89,10 @@ export async function run({ repoUrl, branch1, branch2 }) {
     const totalAdditions = files.reduce((sum, file) => sum + file.additions, 0);
     const totalDeletions = files.reduce((sum, file) => sum + file.deletions, 0);
 
+    // 生成描述信息
+    const repoName = repoUrl.split('/').pop()?.replace('.git', '') || '未知项目';
+    const desc = `${repoName} 项目 ${branch1} 分支和 ${branch2} 分支 diff 后的差异文件列表`;
+
     return {
       files: files,
       totalChanges: files.length,
@@ -99,7 +103,8 @@ export async function run({ repoUrl, branch1, branch2 }) {
         added: files.filter(f => f.statusCode === 'A').length,
         deleted: files.filter(f => f.statusCode === 'D').length,
         renamed: files.filter(f => f.statusCode === 'R').length
-      }
+      },
+      desc: desc
     };
 
   } catch (error) {

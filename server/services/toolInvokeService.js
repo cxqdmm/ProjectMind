@@ -32,6 +32,14 @@ export async function invoke(provider, tool, input) {
       // 调用技能服务中的脚本执行函数
       try {
         const result = await callSkillScript(name, script, params)
+        // 统一输出格式，要求必须包含 desc 字段
+        if (!result || typeof result !== 'object') {
+          throw new Error('脚本必须返回对象且包含 desc 字段描述操作内容')
+        }
+        if (!result.desc) {
+          // 如果没有 desc，根据脚本类型生成默认描述
+          result.desc = `执行了 ${name} 技能的 ${script} 脚本`
+        }
         return { result }
       } catch (e) {
         throw new Error(`脚本执行失败: ${e.message}`)

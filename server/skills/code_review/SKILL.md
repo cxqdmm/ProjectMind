@@ -1,3 +1,7 @@
+---
+name: code_review
+description: 用于对 Git 仓库中的代码变更进行全面的代码审查，识别潜在的逻辑漏洞、语法错误、代码质量问题以及常见的编程陷阱。
+---
 # Code Review 技能
 
 ## 技能描述

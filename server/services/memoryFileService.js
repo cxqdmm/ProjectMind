@@ -22,9 +22,8 @@ function generateId(content, skill, reference) {
 
 function generateFileName(skill, type, reference, content) {
   const skillKey = String(skill || 'unknown').toLowerCase().replace(/\s+/g, '-')
-  const hash = generateId(content, skill, reference)
   const refPart = reference ? path.basename(reference, '.md').replace(/\s+/g, '-') : ''
-  const name = refPart ? `${skillKey}-${type}-${refPart}-${hash}.json` : `${skillKey}-${type}-${hash}.json`
+  const name = refPart ? `${skillKey}-${type}-${refPart}.json` : `${skillKey}-${type}.json`
   return name
 }
 
@@ -42,13 +41,12 @@ function validateMemorySchema(mem) {
 function normalizeMemory(mem) {
   const now = Date.now()
   return {
-    id: String(mem.id || generateId(mem.content, mem.skill, mem.reference)),
-    type: String(mem.type || 'skill'),
-    content: String(mem.content || ''),
-    snippet: String(mem.snippet || ''),
-    skill: String(mem.skill || '').trim(),
-    skillDescription: String(mem.skillDescription || '').trim(),
-    reference: mem.type === 'reference' ? String(mem.reference || '') : undefined,
+    type: mem.type || 'skill',
+    content: mem.content || '',
+    snippet: mem.snippet || '',
+    skill: mem.skill || '',
+    skillDescription: mem.skillDescription || '',
+    reference: mem.type === 'reference' ? mem.reference || '' : undefined,
     createdAt: Number(mem.createdAt || now),
     updatedAt: Number(mem.updatedAt || now),
     meta: mem.meta && typeof mem.meta === 'object' ? mem.meta : {},
@@ -151,19 +149,18 @@ export function deprecateMemory(memoryId) {
   return null
 }
 
-export function createMemoryFromSkillData(skill, skillDescription, content, type = 'skill', reference = null, meta = {}) {
+export function createMemoryFromSkillData(mem) {
+  const { skill, skillDescription, content, type = 'skill', snippet, reference = null, meta = {} } = mem
   const name = String(meta.name || '').trim()
   const description = String(meta.description || '').trim()
-  const snippet = name && description ? `${name}: ${description}` : (description || content.slice(0, 320) + (content.length > 320 ? '…' : ''))
   const now = Date.now()
   const memory = {
-    id: generateId(content, skill, reference),
     type,
     content,
     snippet,
     skill,
     skillDescription,
-    reference: type === 'reference' ? reference : undefined,
+    reference,
     createdAt: now,
     updatedAt: now,
     meta: {

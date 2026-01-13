@@ -16,20 +16,16 @@ function buildSkillMemoriesFromMessages(messages) {
     const tool = String(m.toolName || '')
     const skill = String(m.skill || '').trim()
     const reference = String(m.reference || '').trim()
-    const content = String(m.content || '')
-    if (!content) continue
+    if (!m.content) continue
     
     if (tool === 'read' || tool === 'readReference' || tool === 'call') {
       const kind = tool === 'read' ? 'skill' : tool === 'readReference' ? 'reference' : 'call'
-      const id = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${i}`
       const meta = m.meta || {}
       
       let snippet = ''
       if (tool === 'call') {
-        // 对于 call 类型，使用脚本名称和结果类型作为 snippet
-        const script = String(m.script || 'unknown')
-        const resultType = String(meta.type || 'unknown')
-        snippet = `${skill} 调用脚本 ${script} (类型: ${resultType})`
+        // 对于 call 类型，使用desc作为 snippet
+        snippet = m.content.desc
       } else {
         // 对于 read/readReference 类型，使用原有的逻辑
         const name = String(meta.name || '').trim()
@@ -38,11 +34,10 @@ function buildSkillMemoriesFromMessages(messages) {
       }
       
       memories.push({
-        id,
         kind,
         skill,
         reference,
-        content,
+        content: m.content,
         snippet,
         meta,
         script: tool === 'call' ? String(m.script || '') : undefined, // 保存脚本信息用于 call 类型
@@ -60,15 +55,7 @@ export function appendSkillMemories(sessionId, messages, maxPerSession = 200) {
   // 尝试将新记忆保存为文档化记忆（可选，可以后续优化为自动保存）
   for (const mem of added) {
     try {
-      const skillDesc = mem.meta?.skillDescription || ''
-      const docMem = createMemoryFromSkillData(
-        mem.skill,
-        skillDesc,
-        mem.content,
-        mem.kind,
-        mem.reference || undefined,
-        mem.meta || {}
-      )
+      const docMem = createMemoryFromSkillData(mem)
       // 注意：这里可以选择性地保存，避免每次对话都创建文件
       saveMemory(docMem)
     } catch {}
