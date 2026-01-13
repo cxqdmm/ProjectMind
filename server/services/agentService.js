@@ -33,7 +33,7 @@ export async function runStream(userInput, sessionId = 'default', emit, selectio
     .filter(Boolean)
   // 添加当前输入
   recentUserInputs.push(String(userInput || '').trim())
-  const { selected: selectedMemories } = await selectSkillMemoriesForQuestion(provider, recentUserInputs, sessionId)
+  const { selected: selectedMemories } = await selectSkillMemoriesForQuestion(provider, recentUserInputs)
   const memoryMessages = buildMemoryMessages(selectedMemories)
   const memoryEvents = buildMemoryEventPayload(selectedMemories)
   const messages = [
@@ -43,6 +43,7 @@ export async function runStream(userInput, sessionId = 'default', emit, selectio
     { role: 'user', content: userInput },
   ]
   let step = 1
+  let didFinalCheck = false
   if (memoryEvents.length > 0 && typeof emit === 'function') {
     emit({ type: 'memory_used', memories: memoryEvents })
   }
@@ -52,6 +53,7 @@ export async function runStream(userInput, sessionId = 'default', emit, selectio
     const reply = String(completion?.choices?.[0]?.message?.content || '')
     const calls = parseToolCalls(reply) || []
     if (calls.length > 0) {
+      didFinalCheck = false
       const batchId = `batch_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
       const prepared = calls.map((c, i) => ({
         id: `${batchId}_${i + 1}`,
@@ -143,7 +145,7 @@ export async function runStream(userInput, sessionId = 'default', emit, selectio
           }
         }
       }
-      const { added } = appendSkillMemories(sessionId, openMsgs)
+      const { added } = appendSkillMemories(openMsgs)
       const loopMemoryMessages = buildMemoryMessages(added)
       // 对于 MCP 工具结果，我们也作为普通消息追加，但这里需要区分
       // openMsgs 包含了 openSkill 类型的，也包含了我们新加的 tool 类型的
@@ -159,14 +161,26 @@ export async function runStream(userInput, sessionId = 'default', emit, selectio
       for (const mm of loopMemoryMessages) messages.push(mm)
       step++
       continue
-    } else {
-      const maxTurns = Number(cfg?.historyMaxTurns) || 12
-      const histSegments = [{ role: 'assistant', content: reply }]
-      appendSessionSegments(sessionId, histSegments, maxTurns)
     }
+
+    if (!didFinalCheck) {
+      didFinalCheck = true
+      messages.push({ role: 'assistant', content: reply })
+      messages.push({
+        role: 'user',
+        content:
+          '请做一次“完成性复核”：\n' +
+          '- 如果你认为还需要调用工具才能把用户任务做完，请直接输出 CALL_JSONS: [...]（不要输出其它文字）。\n' +
+          '- 如果你认为任务已经完成、不需要任何工具调用，请输出 FINAL: <你的最终详细答复，包含所有细节>。\n' +
+          '注意：这一步是为了避免遗漏必要的工具调用。',
+      })
+      continue
+    }
+
+    const finalReply = String(reply || '').replace(/^FINAL:\s*/i, '').trim()
     const maxTurns = Number(cfg?.historyMaxTurns) || 12
-    appendSessionSegments(sessionId, [{ role: 'user', content: userInput }, { role: 'assistant', content: reply }], maxTurns)
-    emit({ type: 'done', reply, step })
+    appendSessionSegments(sessionId, [{ role: 'user', content: userInput }, { role: 'assistant', content: finalReply }], maxTurns)
+    emit({ type: 'done', reply: finalReply, step })
     return
   }
 }

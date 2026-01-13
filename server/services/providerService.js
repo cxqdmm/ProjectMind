@@ -36,7 +36,11 @@ export function createProvider(config, selection) {
     }
     
     const r = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) })
-    if (!r.ok) throw new Error('chat completion failed')
+    if (!r.ok) { 
+      debugger
+      throw new Error('chat completion failed')
+    }
+
     const data = await r.json()
     
     // 优先返回 tool_calls

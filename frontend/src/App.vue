@@ -370,6 +370,7 @@ function toolLabel(x) {
 function toolInfoLabel(call) {
   const tool = String(call?.toolName || call?.tool || '')
   const skill = String(call?.input?.skill || call?.result?.key || '')
+  const script = String(call?.input?.script || call?.result?.script || '')
   const files = Array.isArray(call?.input?.files)
     ? call.input.files
     : (call?.input?.file ? [call.input.file] : [])
@@ -382,6 +383,11 @@ function toolInfoLabel(call) {
   }
   if (/read(\b|$)/i.test(tool)) {
     return skill
+  }
+  if (/call(\b|$)/i.test(tool)) {
+    const scriptName = script ? script.split('/').pop() : ''
+    if (skill && scriptName) return `${skill} · ${scriptName}`
+    return skill || scriptName
   }
   return ''
 }

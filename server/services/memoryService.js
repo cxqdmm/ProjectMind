@@ -2,7 +2,7 @@
 
 import { loadDocumentedMemories, createMemoryFromSkillData, saveMemory } from './memoryFileService.js'
 
-const memoryStore = new Map()
+const memoryStore = []
 let documentedMemoriesCache = null
 let documentedMemoriesCacheTime = 0
 const CACHE_TTL = 60000 // 1 分钟缓存
@@ -79,9 +79,8 @@ function buildSkillMemoriesFromMessages(messages) {
   return memories
 }
 
-export function appendSkillMemories(sessionId, messages, maxPerSession = 200) {
-  const id = String(sessionId || 'default')
-  const prev = memoryStore.get(id) || []
+export function appendSkillMemories(messages, maxPerSession = 200) {
+  const prev = memoryStore
   const added = buildSkillMemoriesFromMessages(messages)
   if (!added.length) return { all: prev, added: [] }
   // 尝试将新记忆保存为文档化记忆（可选，可以后续优化为自动保存）
@@ -95,7 +94,8 @@ export function appendSkillMemories(sessionId, messages, maxPerSession = 200) {
   const next = [...prev, ...added]
   const trimmed =
     next.length > maxPerSession ? next.slice(next.length - maxPerSession) : next
-  memoryStore.set(id, trimmed)
+  memoryStore.length = 0
+  memoryStore.push(...trimmed)
   return { all: trimmed, added }
 }
 
@@ -119,9 +119,8 @@ function normalizeMemoryForSelection(mem) {
   }
 }
 
-export function getSkillMemories(sessionId) {
-  const id = String(sessionId || 'default')
-  const runtime = memoryStore.get(id) || []
+export function getSkillMemories() {
+  const runtime = memoryStore
   // 合并文档化记忆
   const now = Date.now()
   if (!documentedMemoriesCache || now - documentedMemoriesCacheTime > CACHE_TTL) {
@@ -183,18 +182,20 @@ function buildSelectorMessages(userInputs, memories) {
       userQuestions: questionContext,
       memories: items,
       instructions:
-        'From the memories list, pick only entries that are clearly helpful to answer the userQuestions (which may include recent conversation context). Prefer high semantic relevance. Return ONLY a JSON array of selected idx numbers, like [0,2]. If nothing is relevant, return an empty array []. Do not include any other text.',
+        '请从 memories 列表中挑选对回答 userQuestions 明显有帮助的条目（可结合最近对话上下文）。优先选择语义相关性高的条目。' +
+        '只返回被选中的 idx 数组（JSON 数组），例如 [0,2]；如果没有相关内容，返回空数组 []；不要输出任何其它文本。' +
+        '补充规则：如果你选择了某个 skill 的记忆条目，且该条目的 toolName 不是 read（例如 readReference/call），那么如果列表中存在同 skill 且 toolName 为 read 的条目，请一并选中，用于加载该技能的 skill 相关记忆内容。',
     },
     null,
     2
   )
   const system =
-    'You are a selector that chooses useful memory entries for an AI assistant based on recent user questions and conversation context. ' +
-    'You MUST respond with a single JSON array of ids and nothing else.'
+    '你是一个“记忆选择器”。你的任务是根据最近用户问题与对话上下文，从给定 memories 列表中选择有用条目。' +
+    '你必须只输出一个 JSON 数组（idx 数组），除此之外不要输出任何内容。'
   const user =
-    'Here is the selection task input:\n\n' +
+    '下面是选择任务输入：\n\n' +
     payload +
-    '\n\nReturn ONLY the JSON array of selected ids. No explanation.'
+    '\n\n请只返回 JSON 数组（idx 数组），不要解释。'
   return [
     { role: 'system', content: system },
     { role: 'user', content: user },
@@ -224,8 +225,8 @@ function parseSelectedIds(rawText) {
   return []
 }
 
-export async function selectSkillMemoriesForQuestion(provider, userInputs, sessionId, limit = 5) {
-  const all = getSkillMemories(sessionId)
+export async function selectSkillMemoriesForQuestion(provider, userInputs, limit = 5) {
+  const all = getSkillMemories()
   if (all.length === 0) {
     return { selected: [], all }
   }
@@ -263,11 +264,11 @@ export function buildMemoryMessages(selected) {
 
     let header = ''
     if (toolName === 'call') {
-      header = `已执行技能「${skill || '未知技能'}」的脚本「${script || '未知脚本'}」${desc ? `（${desc}）` : ''}，结果是：`
+      header = `已捞取到技能「${skill || '未知技能'}」的脚本调用记忆缓存，脚本「${script || '未知脚本'}」${desc ? `；概述：${desc}` : ''}。缓存内容如下：`
     } else if (toolName === 'readReference') {
-      header = `已加载技能「${skill || '未知技能'}」的参考文件「${ref}」，内容是：`
+      header = `已捞取到技能「${skill || '未知技能'}」的参考文件记忆缓存「${ref || '未知文件'}」。缓存内容如下：`
     } else {
-      header = `已加载技能「${skill || '未知技能'}」的正文，内容是：`
+      header = `已捞取到技能「${skill || '未知技能'}」的技能描述记忆缓存。缓存内容如下：`
     }
 
     lines.push(header)

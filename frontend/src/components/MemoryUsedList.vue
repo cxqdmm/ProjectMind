@@ -8,7 +8,9 @@
       <div v-for="(m, idx) in items" :key="m.key || `${m.skill || ''}::${m.toolName || ''}::${m.reference || ''}::${m.script || ''}::${idx}`" class="memory-item">
         <div class="memory-item-title">
           <span class="memory-item-skill">{{ m.skill || '未知技能' }}</span>
-          <span v-if="m.reference" class="memory-item-ref">{{ m.reference }}</span>
+          <span class="memory-item-kind" :class="kindClass(m)">{{ kindText(m) }}</span>
+          <span v-if="m.toolName === 'readReference' && m.reference" class="memory-item-ref">{{ m.reference }}</span>
+          <span v-else-if="m.toolName === 'call' && m.script" class="memory-item-ref">{{ scriptName(m.script) }}</span>
         </div>
         <div v-if="m.snippet" class="memory-item-snippet">{{ m.snippet }}</div>
       </div>
@@ -29,6 +31,27 @@ const props = defineProps({
 const items = computed(() => {
   return Array.isArray(props.memories) ? props.memories : []
 })
+
+function kindText(m) {
+  const t = String(m?.toolName || '')
+  if (t === 'readReference') return '参考文件'
+  if (t === 'call') return '脚本调用'
+  return '技能描述'
+}
+
+function kindClass(m) {
+  const t = String(m?.toolName || '')
+  if (t === 'readReference') return 'kind-ref'
+  if (t === 'call') return 'kind-call'
+  return 'kind-skill'
+}
+
+function scriptName(p) {
+  const s = String(p || '').trim()
+  if (!s) return ''
+  const parts = s.split('/')
+  return parts[parts.length - 1] || s
+}
 </script>
 
 <style scoped>
@@ -81,6 +104,33 @@ const items = computed(() => {
 
 .memory-item-skill {
   font-weight: 600;
+}
+
+.memory-item-kind {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid #e2e8f0;
+  color: #475569;
+  background: #ffffff;
+}
+
+.memory-item-kind.kind-skill {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1d4ed8;
+}
+
+.memory-item-kind.kind-ref {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #334155;
+}
+
+.memory-item-kind.kind-call {
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+  color: #047857;
 }
 
 .memory-item-ref {

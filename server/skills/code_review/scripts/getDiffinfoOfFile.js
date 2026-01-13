@@ -45,7 +45,7 @@ export async function run({ repoUrl, branch1, branch2, filename }) {
         content: '',
         message: `文件 '${filename}' 在 ${branch1} 和 ${branch2} 之间没有变更`,
         stats: { additions: 0, deletions: 0 },
-        desc: `${path.basename(repoPath)} 项目 ${branch1} 分支和 ${branch2} 分支中文件 ${filename} 的 diff 内容`,
+        desc: `${repoUrl} 仓库 ${branch1} 分支和 ${branch2} 分支中文件 ${filename} 的 diff 内容`,
       }
     }
 
@@ -60,7 +60,7 @@ export async function run({ repoUrl, branch1, branch2, filename }) {
         content: '',
         message: `文件 '${filename}' 没有检测到差异内容`,
         stats: { additions: 0, deletions: 0 },
-        desc: `${path.basename(repoPath)} 项目 ${branch1} 分支和 ${branch2} 分支中文件 ${filename} 的 diff 内容`,
+        desc: `${repoUrl} 仓库 ${branch1} 分支和 ${branch2} 分支中文件 ${filename} 的 diff 内容`,
       }
     }
 
@@ -72,8 +72,8 @@ export async function run({ repoUrl, branch1, branch2, filename }) {
     const newContent = await getFileContentAtBranch(repoPath, branch2, filename)
 
     // 生成描述信息
-    const repoName = path.basename(repoPath) || '未知项目'
-    const desc = `${repoName} 项目 ${branch1} 分支和 ${branch2} 分支中文件 ${filename} 的 diff 内容`
+    const repo = String(repoUrl || '未知仓库')
+    const desc = `${repo} 仓库 ${branch1} 分支和 ${branch2} 分支中文件 ${filename} 的 diff 内容`
 
     return {
       filename,
