@@ -51,6 +51,10 @@ export async function runStream(userInput, sessionId = 'default', emit, selectio
 
     const completion = await createChatReply(provider, messages, mcpTools)
     const reply = String(completion?.choices?.[0]?.message?.content || '')
+    const usage = typeof provider?.getLastUsage === 'function' ? provider.getLastUsage() : null
+    if (usage && typeof emit === 'function') {
+      emit({ type: 'llm_usage', usage, step, timestamp: Date.now() })
+    }
     const calls = parseToolCalls(reply) || []
     if (calls.length > 0) {
       didFinalCheck = false

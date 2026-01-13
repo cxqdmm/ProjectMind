@@ -57,6 +57,15 @@
     </header>
 
     <main class="main">
+      <div class="token-panel" v-if="tokenVisible">
+        <div class="token-line">
+          最近一次：输入 {{ formatTokens(tokenLast.promptTokens) }} / 输出 {{ formatTokens(tokenLast.completionTokens) }} / 合计 {{ formatTokens(tokenLast.totalTokens) }}
+          <span v-if="tokenLast.estimated" class="token-hint">（估算）</span>
+        </div>
+        <div class="token-line">
+          累计：输入 {{ formatTokens(tokenTotal.promptTokens) }} / 输出 {{ formatTokens(tokenTotal.completionTokens) }} / 合计 {{ formatTokens(tokenTotal.totalTokens) }}
+        </div>
+      </div>
       <div class="messages" ref="messagesRef">
         <div v-for="(m, idx) in messages" :key="idx" class="message" :class="m.role">
           <div class="role">
@@ -135,7 +144,7 @@ import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import MemoryUsedList from './components/MemoryUsedList.vue'
  
-
+ 
 const messages = ref([])
 const input = ref('')
 const sending = ref(false)
@@ -147,6 +156,9 @@ const skills = ref([])
 const skillsLoading = ref(false)
 const skillsError = ref('')
 const skillsDropdownRef = ref(null)
+const tokenLast = ref({ promptTokens: 0, completionTokens: 0, totalTokens: 0, estimated: false })
+const tokenTotal = ref({ promptTokens: 0, completionTokens: 0, totalTokens: 0 })
+const tokenVisible = ref(false)
 const modelsOpen = ref(false)
 const models = ref([])
 const modelsLoading = ref(false)
@@ -440,6 +452,7 @@ async function onSend() {
   addMessage('user', text)
   input.value = ''
   sending.value = true
+  tokenVisible.value = true
   try {
     const placeholder = { role: 'assistant', content: [{ type: 'text', text: '处理中…' }], citations: [], pending: true }
     messages.value.push(placeholder)
@@ -490,6 +503,8 @@ async function onSend() {
             arr.push({ type: 'memory_used', memories: list, timestamp: Date.now() })
             messages.value[idx].content = arr
           }
+        } else if (data.type === 'llm_usage') {
+          applyUsage(data.usage)
         } else if (data.type === 'done') {
           const arr = Array.isArray(messages.value[idx].content) ? messages.value[idx].content : []
           if (typeof data.reply === 'string') arr.push({ type: 'text', text: String(data.reply) })
@@ -510,6 +525,31 @@ async function onSend() {
     addMessage('assistant', '调用失败，请检查网络或密钥。')
     sending.value = false
   }
+}
+
+function formatTokens(n) {
+  const v = Number(n)
+  if (!Number.isFinite(v)) return '-'
+  return String(Math.max(0, Math.floor(v)))
+}
+
+function applyUsage(u) {
+  if (!u || typeof u !== 'object') return
+  const p = Number(u.promptTokens)
+  const c = Number(u.completionTokens)
+  const t = Number(u.totalTokens)
+  const nextLast = { ...tokenLast.value }
+  if (Number.isFinite(p)) nextLast.promptTokens = p
+  if (Number.isFinite(c)) nextLast.completionTokens = c
+  if (Number.isFinite(t)) nextLast.totalTokens = t
+  nextLast.estimated = Boolean(u.estimated)
+  tokenLast.value = nextLast
+
+  const tot = { ...tokenTotal.value }
+  if (Number.isFinite(p)) tot.promptTokens += p
+  if (Number.isFinite(c)) tot.completionTokens += c
+  if (Number.isFinite(t)) tot.totalTokens += t
+  tokenTotal.value = tot
 }
 
 onMounted(() => {
@@ -545,6 +585,13 @@ onMounted(() => {
 .toolbar { margin-left: auto; display: flex; align-items: center; gap: 8px; position: relative; }
 .tool-btn { display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid #e5e7eb; background: #fff; color: #0f172a; font-size: 12px; border-radius: 12px; }
 .tool-btn:hover { background: #f8fafc; }
+.token-panel { position: fixed; right: 20px; top: 76px; z-index: 9; width: 280px; padding: 10px 12px; border: 1px solid #e5e7eb; border-radius: 12px; background: #ffffff; font-size: 12px; color: #475569; box-shadow: 0 12px 28px rgba(17,24,39,0.08); }
+.token-line { line-height: 1.6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.token-hint { color: #94a3b8; margin-left: 4px; }
+@media (max-width: 1100px) {
+  .token-panel { position: sticky; top: 64px; right: auto; width: min(820px, calc(100% - 40px)); margin: 8px auto 0; box-shadow: none; background: #f8fafc; }
+  .token-line { white-space: normal; }
+}
 .skills-dropdown { position: absolute; right: 0; top: 40px; width: 320px; background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 12px 28px rgba(17,24,39,0.08); }
 .skills-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid #e5e7eb; font-size: 12px; color: #475569; }
 .refresh-btn { border: 1px solid #e5e7eb; background: #fff; color: #475569; font-size: 11px; border-radius: 12px; padding: 3px 10px; }

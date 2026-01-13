@@ -9,16 +9,48 @@ export function createProvider(config, selection) {
   const modelName = String(selection?.model || item?.model || '')
   const apiKey = getModelApiKey(item?.key)
   const isFake = Boolean(process.env.FAKE_LLM)
+  let lastUsage = null
+
+  function approxTokens(text) {
+    const s = String(text || '')
+    if (!s) return 0
+    return Math.max(1, Math.ceil(s.length / 4))
+  }
+
+  function normalizeUsage(data, messages, outputText) {
+    const u = data?.usage
+    if (u && typeof u === 'object') {
+      const promptTokens = Number(u.prompt_tokens ?? u.promptTokens ?? u.input_tokens ?? u.inputTokens)
+      const completionTokens = Number(u.completion_tokens ?? u.completionTokens ?? u.output_tokens ?? u.outputTokens)
+      const totalTokens = Number(u.total_tokens ?? u.totalTokens)
+      return {
+        promptTokens: Number.isFinite(promptTokens) ? promptTokens : undefined,
+        completionTokens: Number.isFinite(completionTokens) ? completionTokens : undefined,
+        totalTokens: Number.isFinite(totalTokens) ? totalTokens : undefined,
+        estimated: false,
+        raw: u,
+      }
+    }
+    const promptText = Array.isArray(messages) ? messages.map(m => String(m?.content || '')).join('\n') : ''
+    const promptTokens = approxTokens(promptText)
+    const completionTokens = approxTokens(outputText)
+    return { promptTokens, completionTokens, totalTokens: promptTokens + completionTokens, estimated: true }
+  }
+
   async function chat(messages, tools = []) {
     if (isFake) {
       const hasInjected = Array.isArray(messages) && messages.some((m) => {
         const s = String(m?.content || '')
-        return m?.role === 'assistant' && /已加载技能|读取参考文件/.test(s)
+        return m?.role === 'assistant' && /已加载技能|已捞取到技能|读取参考文件|记忆缓存/.test(s)
       })
       if (!hasInjected) {
-        return '我将使用技能来完善答案。\nCALL_JSONS: [{"provider":"openskills","tool":"read","input":{"skill":"poem_writer"}},{"provider":"openskills","tool":"readReference","input":{"skill":"poem_writer","file":"references/qijue.md"}}]'
+        const out = '我将使用技能来完善答案。\nCALL_JSONS: [{"provider":"openskills","tool":"read","input":{"skill":"poem_writer"}},{"provider":"openskills","tool":"readReference","input":{"skill":"poem_writer","file":"references/qijue.md"}}]'
+        lastUsage = normalizeUsage(null, messages, out)
+        return out
       }
-      return '基于已加载的技能与参考文件，下面是回答：\n- 诗歌体裁说明与要点已载入\n- 七绝参考文件已读取\n请提供主题与风格，以便生成作品'
+      const out = '基于已加载的技能与参考文件，下面是回答：\n- 诗歌体裁说明与要点已载入\n- 七绝参考文件已读取\n请提供主题与风格，以便生成作品'
+      lastUsage = normalizeUsage(null, messages, out)
+      return out
     }
     const baseURL = String(item?.baseURL || item?.baseUrl || '').replace(/\/$/, '')
     const url = baseURL + '/chat/completions'
@@ -55,13 +87,18 @@ export function createProvider(config, selection) {
         tool: tc.function.name,
         input: JSON.parse(tc.function.arguments || '{}')
       }))
-      return `CALL_JSONS: ${JSON.stringify(calls)}`
+      const out = `CALL_JSONS: ${JSON.stringify(calls)}`
+      lastUsage = normalizeUsage(data, messages, out)
+      return out
     }
     
-    return String(choice?.message?.content || '')
+    const out = String(choice?.message?.content || '')
+    lastUsage = normalizeUsage(data, messages, out)
+    return out
   }
   return {
     chat,
+    getLastUsage: () => lastUsage,
     info: {
       name: providerName,
       model: modelName,
