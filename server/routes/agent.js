@@ -26,6 +26,7 @@ router.post('/stream', async (req, res) => {
     res.end()
   } catch (e) {
     send({ type: 'error', error: String(e?.message || e) })
+    console.log(e)
     res.end()
   }
 })

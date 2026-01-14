@@ -5,8 +5,6 @@ import { loadDocumentedMemories, createMemoryFromSkillData, saveMemory } from '.
 const memoryStore = []
 const taskResultStore = []
 let documentedMemoriesCache = null
-let documentedMemoriesCacheTime = 0
-const CACHE_TTL = 60000 // 1 分钟缓存
 
 function safeStringify(val) {
   if (typeof val === 'string') return val
@@ -196,9 +194,8 @@ function normalizeMemoryForSelection(mem) {
     mem.toolName ||
       (mem.type === 'skill' ? 'read' : mem.type === 'reference' ? 'readReference' : mem.type === 'call' ? 'call' : '')
   )
-  const key = `${mem.skill || ''}::${toolName}::${mem.reference || ''}::${mem.script || ''}`
   return {
-    key,
+    key: mem.snippet,
     toolName,
     skill: mem.skill,
     reference: mem.reference,
@@ -212,12 +209,7 @@ function normalizeMemoryForSelection(mem) {
 
 export function getSkillMemories() {
   const runtime = memoryStore
-  // 合并文档化记忆
-  const now = Date.now()
-  if (!documentedMemoriesCache || now - documentedMemoriesCacheTime > CACHE_TTL) {
-    documentedMemoriesCache = loadDocumentedMemories()
-    documentedMemoriesCacheTime = now
-  }
+  documentedMemoriesCache = loadDocumentedMemories()
   // 去重：相同 skill + toolName + reference + script 时，优先使用文档化记忆
   const merged = []
   const seen = new Map()
@@ -273,6 +265,7 @@ function buildSelectorMessages(userInputs, memories) {
       userQuestions: questionContext,
       memories: items,
       instructions:
+        'memories 字段说明：每一项包含 idx（候选序号，用于返回）、toolName（read=技能描述，readReference=参考文件，call=脚本调用结果）、skill（技能名）、reference（参考文件路径，仅在 readReference 时有值）、script（脚本路径/名称，仅在 call 时有值）、snippet（该记忆的摘要/一句话描述）。' +
         '请从 memories 列表中挑选对回答 userQuestions 明显有帮助的条目（可结合最近对话上下文）。优先选择语义相关性高的条目。' +
         '只返回被选中的 idx 数组（JSON 数组），例如 [0,2]；如果没有相关内容，返回空数组 []；不要输出任何其它文本。' +
         '补充规则：如果你选择了某个 skill 的记忆条目，且该条目的 toolName 不是 read（例如 readReference/call），那么如果列表中存在同 skill 且 toolName 为 read 的条目，请一并选中，用于加载该技能的 skill 相关记忆内容。',
