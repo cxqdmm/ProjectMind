@@ -14,7 +14,7 @@ export function readLLMConfig() {
         label: 'ZhipuAI',
         provider: 'zhipuai',
         baseURL: 'https://open.bigmodel.cn/api/paas/v4/',
-        model: 'glm-4.7',
+        model: 'glm-4.6',
         envKey: 'ZHIPUAI_API_KEY',
       },
       {

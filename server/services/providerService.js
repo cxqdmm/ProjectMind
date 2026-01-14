@@ -38,20 +38,6 @@ export function createProvider(config, selection) {
   }
 
   async function chat(messages, tools = []) {
-    if (isFake) {
-      const hasInjected = Array.isArray(messages) && messages.some((m) => {
-        const s = String(m?.content || '')
-        return m?.role === 'assistant' && /已加载技能|已捞取到技能|读取参考文件|记忆缓存/.test(s)
-      })
-      if (!hasInjected) {
-        const out = '我将使用技能来完善答案。\nCALL_JSONS: [{"provider":"openskills","tool":"read","input":{"skill":"poem_writer"}},{"provider":"openskills","tool":"readReference","input":{"skill":"poem_writer","file":"references/qijue.md"}}]'
-        lastUsage = normalizeUsage(null, messages, out)
-        return out
-      }
-      const out = '基于已加载的技能与参考文件，下面是回答：\n- 诗歌体裁说明与要点已载入\n- 七绝参考文件已读取\n请提供主题与风格，以便生成作品'
-      lastUsage = normalizeUsage(null, messages, out)
-      return out
-    }
     const baseURL = String(item?.baseURL || item?.baseUrl || '').replace(/\/$/, '')
     const url = baseURL + '/chat/completions'
     const headers = { 'Content-Type': 'application/json' }

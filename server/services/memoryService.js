@@ -3,6 +3,7 @@
 import { loadDocumentedMemories, createMemoryFromSkillData, saveMemory } from './memoryFileService.js'
 
 const memoryStore = []
+const taskResultStore = []
 let documentedMemoriesCache = null
 let documentedMemoriesCacheTime = 0
 const CACHE_TTL = 60000 // 1 分钟缓存
@@ -97,6 +98,96 @@ export function appendSkillMemories(messages, maxPerSession = 200) {
   memoryStore.length = 0
   memoryStore.push(...trimmed)
   return { all: trimmed, added }
+}
+
+export function appendTaskResultMemory(task, result, meta = {}) {
+  const now = Date.now()
+  const title = String(task?.title || '').trim() || `子任务 ${Number(task?.index) + 1 || ''}`.trim()
+  const content = String(result || '')
+  const snippet = content.split('\n').find((l) => String(l || '').trim())?.trim() || content.slice(0, 120)
+  taskResultStore.push({
+    kind: 'task_result',
+    index: Number.isFinite(Number(task?.index)) ? Number(task.index) : taskResultStore.length,
+    title,
+    snippet: snippet.slice(0, 180),
+    content,
+    meta: meta && typeof meta === 'object' ? meta : {},
+    createdAt: now,
+    updatedAt: now,
+  })
+  if (taskResultStore.length > 200) {
+    taskResultStore.splice(0, taskResultStore.length - 200)
+  }
+  return taskResultStore[taskResultStore.length - 1]
+}
+
+export function getTaskResultMemories() {
+  return taskResultStore.slice()
+}
+
+function buildTaskSelectorMessages(userInputs, tasks) {
+  const inputs = Array.isArray(userInputs) ? userInputs : [String(userInputs || '')]
+  const questionContext = inputs
+    .map((inp, idx) => {
+      const text = String(inp || '').trim()
+      if (!text) return ''
+      return inputs.length > 1 ? `[${idx + 1}] ${text}` : text
+    })
+    .filter(Boolean)
+    .join('\n')
+  const items = (Array.isArray(tasks) ? tasks : []).map((t, idx) => ({
+    idx,
+    index: t.index,
+    title: t.title,
+    snippet: t.snippet,
+  }))
+  const payload = JSON.stringify(
+    {
+      userQuestions: questionContext,
+      taskResults: items,
+      instructions:
+        '请从 taskResults 列表中挑选对完成当前 userQuestions 明显有帮助的条目（可结合最近对话上下文）。' +
+        '只返回被选中的 idx 数组（JSON 数组），例如 [0,2]；如果没有相关内容，返回空数组 []；不要输出任何其它文本。',
+    },
+    null,
+    2
+  )
+  const system =
+    '你是一个“任务结果记忆选择器”。你的任务是根据当前问题，从给定 taskResults 列表中选择有用条目。' +
+    '你必须只输出一个 JSON 数组（idx 数组），除此之外不要输出任何内容。'
+  const user = '下面是选择任务输入：\n\n' + payload + '\n\n请只返回 JSON 数组（idx 数组），不要解释。'
+  return [
+    { role: 'system', content: system },
+    { role: 'user', content: user },
+  ]
+}
+
+export async function selectTaskResultMemoriesForQuestion(provider, userInputs, limit = 2) {
+  const all = getTaskResultMemories()
+  if (all.length === 0) return { selected: [], all }
+  const base = all.slice(-Math.max(1, limit * 4))
+  if (!provider || typeof provider.chat !== 'function') {
+    return { selected: base.slice(-limit), all }
+  }
+  try {
+    const messages = buildTaskSelectorMessages(userInputs, base)
+    const raw = await provider.chat(messages)
+    const idxs = parseSelectedIds(raw)
+    const picked = base.filter((_, idx) => idxs.includes(idx))
+    return { selected: picked.slice(0, limit), all }
+  } catch {
+    return { selected: base.slice(-limit), all }
+  }
+}
+
+export function buildTaskResultMessages(selected) {
+  const arr = Array.isArray(selected) ? selected : []
+  return arr.map((t) => {
+    const title = String(t?.title || '').trim() || '子任务结果'
+    const snippet = String(t?.snippet || '').trim()
+    const header = `已捞取到已完成子任务「${title}」的结果记忆缓存${snippet ? `；概述：${snippet}` : ''}。缓存内容如下：`
+    return { role: 'assistant', content: [header, '', String(t?.content || '')].join('\n') }
+  })
 }
 
 function normalizeMemoryForSelection(mem) {
