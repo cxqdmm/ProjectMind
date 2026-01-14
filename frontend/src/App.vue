@@ -77,49 +77,51 @@
             <template v-else>你</template>
           </div>
         <div class="content">
-            <div v-if="m.role === 'assistant' && Array.isArray(m.tasks) && m.tasks.length" class="task-card">
-              <div class="task-card-head">
-                <span class="task-pill">子任务</span>
-                <span class="task-count">{{ m.tasks.length }}</span>
-              </div>
-              <div class="task-card-list">
-                <div v-for="t in m.tasks" :key="taskKey(t)" class="task-card-item">
-                  <div class="task-card-row">
-                    <span class="task-index">{{ (Number(t.index) || 0) + 1 }}</span>
-                    <span class="task-title" :title="t.title">{{ t.title }}</span>
-                    <span class="task-status" :class="taskStatusClass(t.status)">{{ taskStatusText(t.status) }}</span>
-                    <button class="task-toggle" type="button" @click="toggleTask(idx, t)">{{ isTaskOpen(idx, t) ? '收起' : '展开' }}</button>
-                  </div>
-                  <div class="task-body" v-show="isTaskOpen(idx, t)">
-                    <pre v-if="t.result" class="task-result">{{ t.result }}</pre>
-                    <pre v-else-if="t.status === 'failed'" class="task-result">{{ t.error || '执行失败' }}</pre>
-                    <div v-else class="task-result-empty">暂无结果</div>
-                    <div v-if="Array.isArray(t.memories) && t.memories.length" class="task-sub">
-                      <div class="task-subhead">记忆</div>
-                      <MemoryUsedList :memories="t.memories" />
+            <template v-for="(part, pi) in m.content" :key="pi">
+              <div v-if="part?.type === 'tasks' && m.role === 'assistant'" class="task-card">
+                <div class="task-card-head">
+                  <span class="task-pill">子任务</span>
+                  <span class="task-count">{{ Array.isArray(m.tasks) ? m.tasks.length : 0 }}</span>
+                </div>
+                <div class="task-card-list">
+                  <div v-for="t in (Array.isArray(m.tasks) ? m.tasks : [])" :key="taskKey(t)" class="task-card-item">
+                    <div class="task-card-row">
+                      <span class="task-index">{{ (Number(t.index) || 0) + 1 }}</span>
+                      <span class="task-title" :title="t.title">{{ t.title }}</span>
+                      <span class="task-status" :class="taskStatusClass(t.status)">{{ taskStatusText(t.status) }}</span>
+                      <button class="task-toggle" type="button" @click="toggleTask(idx, t)">{{ isTaskOpen(idx, t) ? '收起' : '展开' }}</button>
                     </div>
-                    <div v-if="taskToolBatches(t).length" class="task-sub">
-                      <div class="task-subhead">工具</div>
-                      <div class="tool-events task-tools">
-                        <div v-for="(batch, bi) in taskToolBatches(t)" :key="bi" class="tool-group compact">
-                          <div class="tool-list">
-                            <div v-for="call in batch.calls" :key="call.id" class="tool-row">
-                              <div class="tool-row-head">
-                                <span class="tool-row-name">{{ callTitle(call) }}</span>
-                                <span v-if="toolInfoLabel(call)" class="tool-row-ref">{{ toolInfoLabel(call) }}</span>
-                                <span class="tool-row-state-dot">
-                                  <i :class="stateDotClass(call.status)"></i>
-                                </span>
-                                <button class="tool-row-toggle" type="button" @click="toggleTaskTool(idx, t, call.id)">{{ isTaskToolOpen(idx, t, call.id) ? '收起' : '展开' }}</button>
-                              </div>
-                              <div class="tool-row-body" v-show="isTaskToolOpen(idx, t, call.id)">
-                                <div class="tool-pane">
-                                  <div class="tool-pane-title">输入</div>
-                                  <pre class="tool-pane-pre">{{ formatJSON(call.inputPreview || call.input || {}) }}</pre>
+                    <div class="task-body" v-show="isTaskOpen(idx, t)">
+                      <pre v-if="t.result" class="task-result">{{ t.result }}</pre>
+                      <pre v-else-if="t.status === 'failed'" class="task-result">{{ t.error || '执行失败' }}</pre>
+                      <div v-else class="task-result-empty">暂无结果</div>
+                      <div v-if="Array.isArray(t.memories) && t.memories.length" class="task-sub">
+                        <div class="task-subhead">记忆</div>
+                        <MemoryUsedList :memories="t.memories" />
+                      </div>
+                      <div v-if="taskToolBatches(t).length" class="task-sub">
+                        <div class="task-subhead">工具</div>
+                        <div class="tool-events task-tools">
+                          <div v-for="(batch, bi) in taskToolBatches(t)" :key="bi" class="tool-group compact">
+                            <div class="tool-list">
+                              <div v-for="call in batch.calls" :key="call.id" class="tool-row">
+                                <div class="tool-row-head">
+                                  <span class="tool-row-name">{{ callTitle(call) }}</span>
+                                  <span v-if="toolInfoLabel(call)" class="tool-row-ref">{{ toolInfoLabel(call) }}</span>
+                                  <span class="tool-row-state-dot">
+                                    <i :class="stateDotClass(call.status)"></i>
+                                  </span>
+                                  <button class="tool-row-toggle" type="button" @click="toggleTaskTool(idx, t, call.id)">{{ isTaskToolOpen(idx, t, call.id) ? '收起' : '展开' }}</button>
                                 </div>
-                                <div class="tool-pane">
-                                  <div class="tool-pane-title">输出</div>
-                                  <pre class="tool-pane-pre">{{ call.error ? String(call.error) : formatJSON(call.result) }}</pre>
+                                <div class="tool-row-body" v-show="isTaskToolOpen(idx, t, call.id)">
+                                  <div class="tool-pane">
+                                    <div class="tool-pane-title">输入</div>
+                                    <pre class="tool-pane-pre">{{ formatJSON(call.inputPreview || call.input || {}) }}</pre>
+                                  </div>
+                                  <div class="tool-pane">
+                                    <div class="tool-pane-title">输出</div>
+                                    <pre class="tool-pane-pre">{{ call.error ? String(call.error) : formatJSON(call.result) }}</pre>
+                                  </div>
                                 </div>
                               </div>
                             </div>
@@ -130,9 +132,7 @@
                   </div>
                 </div>
               </div>
-            </div>
-            <template v-for="(part, pi) in m.content" :key="pi">
-              <div v-if="part?.type === 'text' && m.role === 'assistant'" class="md" v-html="renderMarkdown(String(part?.text || ''))"></div>
+              <div v-else-if="part?.type === 'text' && m.role === 'assistant'" class="md" v-html="renderMarkdown(String(part?.text || ''))"></div>
               <pre v-else-if="part?.type === 'text'">{{ String(part?.text || '') }}</pre>
               <div v-else-if="part?.type === 'tool_calls'" class="tool-events">
                 <div v-for="(batch, bi) in buildBatchForItem(m, part)" :key="bi" class="tool-group compact">
@@ -335,6 +335,15 @@ function upsertTaskIntoMessage(msgIndex, task) {
   else existing.push(item)
   existing.sort((a, b) => Number(a.index) - Number(b.index))
   m.tasks = existing
+}
+
+function ensureTaskAnchorPart(msgIndex, ts) {
+  const m = messages.value?.[msgIndex]
+  if (!m) return
+  const arr = Array.isArray(m.content) ? m.content : []
+  if (arr.some((p) => p && p.type === 'tasks')) return
+  arr.push({ type: 'tasks', timestamp: Number(ts) || Date.now() })
+  m.content = arr
 }
 
 function ensureTaskInMessage(msgIndex, taskCtx) {
@@ -635,7 +644,7 @@ function formatTime(ts) {
 }
 
 function addMessage(role, content, citations = []) {
-  messages.value.push({ role, content: [{ type: 'text', text: String(content || '') }], citations })
+  messages.value.push({ role, content: [{ type: 'text', text: String(content || '') }], citations, tasks: [] })
   scrollToBottom()
 }
 
@@ -648,7 +657,7 @@ async function onSend() {
   sending.value = true
   tokenVisible.value = true
   try {
-    const placeholder = { role: 'assistant', content: [{ type: 'text', text: '处理中…' }], citations: [], pending: true }
+    const placeholder = { role: 'assistant', content: [{ type: 'text', text: '处理中…' }], citations: [], pending: true, tasks: [] }
     messages.value.push(placeholder)
     const idx = messages.value.length - 1
     const body = {
@@ -684,6 +693,7 @@ async function onSend() {
           messages.value[idx].content = arr
         } else if (data.type === 'tool_calls') {
           if (data.task && (data.task.id != null || data.task.index != null)) {
+            ensureTaskAnchorPart(idx, Date.now())
             const t = ensureTaskInMessage(idx, data.task)
             if (t) {
               t.toolEvents = Array.isArray(t.toolEvents) ? t.toolEvents : []
@@ -696,6 +706,7 @@ async function onSend() {
           }
         } else if (data.type === 'tool_update') {
           if (data.task && (data.task.id != null || data.task.index != null)) {
+            ensureTaskAnchorPart(idx, Date.now())
             const t = ensureTaskInMessage(idx, data.task)
             if (t) {
               t.toolEvents = Array.isArray(t.toolEvents) ? t.toolEvents : []
@@ -710,6 +721,7 @@ async function onSend() {
           const list = Array.isArray(data.memories) ? data.memories : []
           if (list.length) {
             if (data.task && (data.task.id != null || data.task.index != null)) {
+              ensureTaskAnchorPart(idx, Date.now())
               const t = ensureTaskInMessage(idx, data.task)
               if (t) t.memories = mergeMemories(t.memories, list)
             } else {
@@ -722,8 +734,12 @@ async function onSend() {
           applyUsage(data.usage)
         } else if (data.type === 'task_list') {
           const m = messages.value[idx]
-          if (m) m.tasks = normalizeTasks(data.tasks || []).map((t) => ({ ...t, toolEvents: Array.isArray(t.toolEvents) ? t.toolEvents : [], memories: Array.isArray(t.memories) ? t.memories : [] }))
+          if (m) {
+            m.tasks = normalizeTasks(data.tasks || []).map((t) => ({ ...t, toolEvents: Array.isArray(t.toolEvents) ? t.toolEvents : [], memories: Array.isArray(t.memories) ? t.memories : [] }))
+            ensureTaskAnchorPart(idx, Date.now())
+          }
         } else if (data.type === 'task_update') {
+          ensureTaskAnchorPart(idx, Date.now())
           upsertTaskIntoMessage(idx, data.task)
         } else if (data.type === 'done') {
           const arr = Array.isArray(messages.value[idx].content) ? messages.value[idx].content : []
