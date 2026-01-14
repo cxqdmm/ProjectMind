@@ -123,6 +123,36 @@ function applyUsage(tokenLast, tokenTotal, u) {
   tokenTotal.value = tot
 }
 
+function upsertToolUpdateEvent(events, update) {
+  const list = Array.isArray(events) ? events : []
+  const id = String(update?.id || '')
+  if (!id) return list
+  for (let i = list.length - 1; i >= 0; i--) {
+    const it = list[i]
+    if (it?.messageType === 'tool_update' && String(it?.id || '') === id) {
+      list[i] = { ...it, ...update, messageType: 'tool_update', id }
+      return list
+    }
+  }
+  list.push({ ...update, messageType: 'tool_update', id })
+  return list
+}
+
+function upsertToolUpdatePart(contentParts, update) {
+  const list = Array.isArray(contentParts) ? contentParts : []
+  const id = String(update?.id || '')
+  if (!id) return list
+  for (let i = list.length - 1; i >= 0; i--) {
+    const it = list[i]
+    if (it?.type === 'tool_update' && String(it?.id || '') === id) {
+      list[i] = { ...it, ...update, type: 'tool_update', id }
+      return list
+    }
+  }
+  list.push({ ...update, type: 'tool_update', id })
+  return list
+}
+
 export function useAgentStream(opts = {}) {
   const baseUrl = String(opts.baseUrl || 'http://localhost:3334').replace(/\/$/, '')
   const messages = ref([])
@@ -204,11 +234,11 @@ export function useAgentStream(opts = {}) {
               const t = ensureTaskInMessage(messages, idx, data.task)
               if (t) {
                 t.toolEvents = Array.isArray(t.toolEvents) ? t.toolEvents : []
-                t.toolEvents.push({ messageType: 'tool_update', id: data.id, status: data.status, result: data.result, error: data.error, startedAt: data.startedAt, completedAt: data.completedAt, durationMs: data.durationMs, timestamp: Date.now() })
+                upsertToolUpdateEvent(t.toolEvents, { id: data.id, status: data.status, result: data.result, error: data.error, startedAt: data.startedAt, completedAt: data.completedAt, durationMs: data.durationMs, timestamp: Date.now() })
               }
             } else {
               const arr = Array.isArray(messages.value[idx].content) ? messages.value[idx].content : []
-              arr.push({ type: 'tool_update', id: data.id, status: data.status, result: data.result, error: data.error, startedAt: data.startedAt, completedAt: data.completedAt, durationMs: data.durationMs, timestamp: Date.now() })
+              upsertToolUpdatePart(arr, { id: data.id, status: data.status, result: data.result, error: data.error, startedAt: data.startedAt, completedAt: data.completedAt, durationMs: data.durationMs, timestamp: Date.now() })
               messages.value[idx].content = arr
             }
           } else if (data.type === 'memory_used') {
@@ -260,4 +290,3 @@ export function useAgentStream(opts = {}) {
 
   return { messages, sending, tokenVisible, tokenLast, tokenTotal, send, addMessage }
 }
-
