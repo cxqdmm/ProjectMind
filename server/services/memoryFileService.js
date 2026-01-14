@@ -13,7 +13,7 @@ function ensureDir() {
   } catch {}
 }
 
-function slugify(input, maxLen = 60) {
+function slugify(input, maxLen = 200) {
   const s = String(input || '')
     .trim()
     .toLowerCase()
@@ -36,7 +36,7 @@ function generateFileNameForRead(skill, type, reference) {
 function generateFileNameForCall(skill, script, desc) {
   const skillKey = String(skill || 'unknown').toLowerCase().replace(/\s+/g, '-')
   const scriptPart = slugify(path.basename(String(script || 'script')))
-  const descPart = slugify(desc || 'no-desc', 80)
+  const descPart = slugify(desc || 'no-desc', 200)
   return `${skillKey}-call-${scriptPart}-${descPart}.json`
 }
 

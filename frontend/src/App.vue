@@ -1,193 +1,23 @@
 <template>
   <div class="app">
-    <header class="header">
-      <div class="header-inner">
-        <h1>智能助手</h1>
-        <div class="toolbar">
-          <button class="tool-btn" @click="onSkillsToggle" title="技能">
-            <svg viewBox="0 0 24 24" width="18" height="18" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M12 2l3 6l6 1l-4.5 4.2L18 20l-6-3.2L6 20l1.5-6.8L3 9l6-1z" fill="#0ea5e9"/></svg>
-            技能
-          </button>
-          <div v-show="skillsOpen" ref="skillsDropdownRef" class="skills-dropdown">
-            <div class="skills-head">
-              <span>技能列表</span>
-              <button class="refresh-btn" @click="onSkillsRefresh" :disabled="skillsLoading">{{ skillsLoading ? '加载中…' : '刷新' }}</button>
-            </div>
-            <div class="skills-body">
-              <div v-if="skillsError" class="skills-empty">加载失败</div>
-              <div v-else-if="skillsLoading" class="skills-empty">加载中…</div>
-              <div v-else-if="!skills.length" class="skills-empty">暂无技能</div>
-              <div v-else class="skills-list">
-                <div v-for="s in skills" :key="s.key" class="skill-item">
-                  <div class="skill-text">
-                    <div class="skill-name">{{ s.name || s.key }}</div>
-                    <div class="skill-desc">{{ s.description || '' }}</div>
-                  </div>
-                  <button class="skill-insert" @click="onInsertSkill(s.name || s.key)">插入</button>
-                </div>
-              </div>
-            </div>
-          </div>
-          <button class="tool-btn" @click="onModelsToggle" title="模型">
-            <svg viewBox="0 0 24 24" width="18" height="18" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M12 3l9 5v8l-9 5-9-5V8l9-5zm0 2.2L6 8l6 3.3L18 8 12 5.2zm7 5.6l-7 3.9-7-3.9v4.4l7 3.9 7-3.9v-4.4z" fill="#111827"/></svg>
-            {{ currentModelLabel || '模型' }}
-          </button>
-          <div v-show="modelsOpen" ref="modelsDropdownRef" class="skills-dropdown">
-            <div class="skills-head">
-              <span>可用模型</span>
-              <button class="refresh-btn" @click="onModelsRefresh" :disabled="modelsLoading">{{ modelsLoading ? '加载中…' : '刷新' }}</button>
-            </div>
-            <div class="skills-body">
-              <div v-if="modelsError" class="skills-empty">加载失败</div>
-              <div v-else-if="modelsLoading" class="skills-empty">加载中…</div>
-              <div v-else-if="!models.length" class="skills-empty">暂无模型</div>
-              <div v-else class="skills-list">
-                <div v-for="m in models" :key="m.id" class="skill-item">
-                  <div class="skill-text">
-                    <div class="skill-name">{{ m.label }}</div>
-                    <div class="skill-desc">{{ m.provider }} · {{ m.model }}</div>
-                  </div>
-                  <button class="skill-insert" :disabled="!m.enabled" @click="onChooseModel(m)">{{ m.enabled ? '选择' : '不可用' }}</button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </header>
+    <ChatHeader
+      :currentModelLabel="currentModelLabel"
+      :skills="skills"
+      :skillsLoading="skillsLoading"
+      :skillsError="skillsError"
+      :models="models"
+      :modelsLoading="modelsLoading"
+      :modelsError="modelsError"
+      @refreshSkills="onSkillsRefresh"
+      @refreshModels="onModelsRefresh"
+      @chooseModel="onChooseModel"
+      @insertSkill="onInsertSkill"
+    />
 
     <main class="main">
-      <div class="token-panel" v-if="tokenVisible">
-        <div class="token-line">
-          最近一次：输入 {{ formatTokens(tokenLast.promptTokens) }} / 输出 {{ formatTokens(tokenLast.completionTokens) }} / 合计 {{ formatTokens(tokenLast.totalTokens) }}
-          <span v-if="tokenLast.estimated" class="token-hint">（估算）</span>
-        </div>
-        <div class="token-line">
-          累计：输入 {{ formatTokens(tokenTotal.promptTokens) }} / 输出 {{ formatTokens(tokenTotal.completionTokens) }} / 合计 {{ formatTokens(tokenTotal.totalTokens) }}
-        </div>
-      </div>
-      <div class="messages" ref="messagesRef">
-        <div v-for="(m, idx) in messages" :key="idx" class="message" :class="m.role">
-          <div class="role">
-            <template v-if="m.role === 'assistant'">
-              <svg class="role-icon" viewBox="0 0 24 24" width="20" height="20" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                <path d="M12 2a7 7 0 0 0-7 7v3a5 5 0 0 0 5 5h1v2a1 1 0 0 0 1.6.8l3.4-2.6H17a5 5 0 0 0 5-5V9a7 7 0 0 0-7-7zm-3 9a1.5 1.5 0 1 1 3 0a1.5 1.5 0 1 1-3 0zm5 0a1.5 1.5 0 1 1 3 0a1.5 1.5 0 1 1-3 0z"/>
-              </svg>
-            </template>
-            <template v-else>你</template>
-          </div>
-        <div class="content">
-            <template v-for="(part, pi) in m.content" :key="pi">
-              <div v-if="part?.type === 'tasks' && m.role === 'assistant'" class="task-card">
-                <div class="task-card-head">
-                  <span class="task-pill">子任务</span>
-                  <span class="task-count">{{ Array.isArray(m.tasks) ? m.tasks.length : 0 }}</span>
-                </div>
-                <div class="task-card-list">
-                  <div v-for="t in (Array.isArray(m.tasks) ? m.tasks : [])" :key="taskKey(t)" class="task-card-item">
-                    <div class="task-card-row">
-                      <span class="task-index">{{ (Number(t.index) || 0) + 1 }}</span>
-                      <span class="task-title" :title="t.title">{{ t.title }}</span>
-                      <span class="task-status" :class="taskStatusClass(t.status)">{{ taskStatusText(t.status) }}</span>
-                      <button class="task-toggle" type="button" @click="toggleTask(idx, t)">{{ isTaskOpen(idx, t) ? '收起' : '展开' }}</button>
-                    </div>
-                    <div class="task-body" v-show="isTaskOpen(idx, t)">
-                      <pre v-if="t.result" class="task-result">{{ t.result }}</pre>
-                      <pre v-else-if="t.status === 'failed'" class="task-result">{{ t.error || '执行失败' }}</pre>
-                      <div v-else class="task-result-empty">暂无结果</div>
-                      <div v-if="Array.isArray(t.memories) && t.memories.length" class="task-sub">
-                        <div class="task-subhead">记忆</div>
-                        <MemoryUsedList :memories="t.memories" />
-                      </div>
-                      <div v-if="taskToolBatches(t).length" class="task-sub">
-                        <div class="task-subhead">工具</div>
-                        <div class="tool-events task-tools">
-                          <div v-for="(batch, bi) in taskToolBatches(t)" :key="bi" class="tool-group compact">
-                            <div class="tool-list">
-                              <div v-for="call in batch.calls" :key="call.id" class="tool-row">
-                                <div class="tool-row-head">
-                                  <span class="tool-row-name">{{ callTitle(call) }}</span>
-                                  <span v-if="toolInfoLabel(call)" class="tool-row-ref">{{ toolInfoLabel(call) }}</span>
-                                  <span class="tool-row-state-dot">
-                                    <i :class="stateDotClass(call.status)"></i>
-                                  </span>
-                                  <button class="tool-row-toggle" type="button" @click="toggleTaskTool(idx, t, call.id)">{{ isTaskToolOpen(idx, t, call.id) ? '收起' : '展开' }}</button>
-                                </div>
-                                <div class="tool-row-body" v-show="isTaskToolOpen(idx, t, call.id)">
-                                  <div class="tool-pane">
-                                    <div class="tool-pane-title">输入</div>
-                                    <pre class="tool-pane-pre">{{ formatJSON(call.inputPreview || call.input || {}) }}</pre>
-                                  </div>
-                                  <div class="tool-pane">
-                                    <div class="tool-pane-title">输出</div>
-                                    <pre class="tool-pane-pre">{{ call.error ? String(call.error) : formatJSON(call.result) }}</pre>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div v-else-if="part?.type === 'text' && m.role === 'assistant'" class="md" v-html="renderMarkdown(String(part?.text || ''))"></div>
-              <pre v-else-if="part?.type === 'text'">{{ String(part?.text || '') }}</pre>
-              <div v-else-if="part?.type === 'tool_calls'" class="tool-events">
-                <div v-for="(batch, bi) in buildBatchForItem(m, part)" :key="bi" class="tool-group compact">
-                  <div class="tool-list">
-                    <div v-for="call in batch.calls" :key="call.id" class="tool-row">
-                      <div class="tool-row-head">
-                        <span class="tool-row-name">{{ callTitle(call) }}</span>
-                        <span v-if="toolInfoLabel(call)" class="tool-row-ref">{{ toolInfoLabel(call) }}</span>
-                        <span class="tool-row-state-dot">
-                          <i :class="stateDotClass(call.status)"></i>
-                        </span>
-                        <button class="tool-row-toggle" @click="toggleTool(call.id)">{{ isOpen(call.id) ? '收起' : '展开' }}</button>
-                      </div>
-                      <div class="tool-row-meta" v-if="false">
-                        <span v-if="call.startedAt">开始 {{ formatTime(call.startedAt) }}</span>
-                        <span v-if="call.completedAt">结束 {{ formatTime(call.completedAt) }}</span>
-                        <span v-if="call.durationMs">耗时 {{ formatDuration(call.durationMs) }}</span>
-                      </div>
-                      <div class="tool-row-body" v-show="isOpen(call.id)">
-                        <div class="tool-pane">
-                          <div class="tool-pane-title">输入</div>
-                          <pre class="tool-pane-pre">{{ formatJSON(call.inputPreview || call.input || {}) }}</pre>
-                        </div>
-                        <div class="tool-pane">
-                          <div class="tool-pane-title">输出</div>
-                          <pre class="tool-pane-pre">{{ call.error ? String(call.error) : formatJSON(call.result) }}</pre>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <MemoryUsedList
-                v-else-if="part?.type === 'memory_used'"
-                :memories="part.memories || []"
-              />
-            </template>
-            <div v-if="m.role === 'assistant' && m.pending" class="message-loading">
-              <i class="dot dot-amber"></i>
-              执行中…
-            </div>
-            <div v-if="m.citations?.length" class="citations">
-              引用：
-              <span v-for="(c, i) in m.citations" :key="i" class="citation-item" :title="c.snippet || ''">
-                {{ c.title }} · {{ c.source }}
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <form class="input-row" @submit.prevent="onSend">
-        <input v-model.trim="input" type="text" placeholder="请输入问题或指令" />
-        <button type="submit" :disabled="sending">{{ sending ? '发送中...' : '发送' }}</button>
-      </form>
+      <TokenPanel :visible="tokenVisible" :tokenLast="tokenLast" :tokenTotal="tokenTotal" />
+      <MessageList ref="messageListRef" :messages="messages" :renderMarkdown="renderMarkdown" :isOpen="isOpen" :toggle="toggleTool" />
+      <ChatInput v-model="input" :sending="sending" @send="onSend" />
     </main>
   </div>
 </template>
@@ -196,43 +26,31 @@
 import { ref, onMounted, nextTick } from 'vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
-import MemoryUsedList from './components/MemoryUsedList.vue'
+import ChatHeader from './components/ChatHeader.vue'
+import TokenPanel from './components/TokenPanel.vue'
+import ChatInput from './components/ChatInput.vue'
+import MessageList from './components/MessageList.vue'
+import { useOpenState } from './composables/useOpenState.js'
+import { useSkills } from './composables/useSkills.js'
+import { useModels } from './composables/useModels.js'
+import { useAgentStream } from './composables/useAgentStream.js'
  
  
-const messages = ref([])
 const input = ref('')
-const sending = ref(false)
-const messagesRef = ref(null)
+const messageListRef = ref(null)
 const sessionId = ref(localStorage.getItem('pm_session_id') || '')
-const openIds = ref(new Set())
-const skillsOpen = ref(false)
-const skills = ref([])
-const skillsLoading = ref(false)
-const skillsError = ref('')
-const skillsDropdownRef = ref(null)
-const tokenLast = ref({ promptTokens: 0, completionTokens: 0, totalTokens: 0, estimated: false })
-const tokenTotal = ref({ promptTokens: 0, completionTokens: 0, totalTokens: 0 })
-const tokenVisible = ref(false)
-const modelsOpen = ref(false)
-const models = ref([])
-const modelsLoading = ref(false)
-const modelsError = ref('')
-const modelsDropdownRef = ref(null)
-const selectedModel = ref(null)
-const currentModelLabel = ref('')
+const { isOpen, toggle: toggleOpen } = useOpenState()
+const { skills, loading: skillsLoading, error: skillsError, refresh: onSkillsRefresh } = useSkills()
+const { models, loading: modelsLoading, error: modelsError, selectedModel, currentLabel: currentModelLabel, refresh: onModelsRefresh, choose: onChooseModel } = useModels()
+const { messages, sending, tokenVisible, tokenLast, tokenTotal, send, addMessage } = useAgentStream()
 
 function scrollToBottom() {
   nextTick(() => {
-    const el = messagesRef.value
-    if (el) el.scrollTop = el.scrollHeight
+    messageListRef.value?.scrollToBottom?.()
   })
 }
 
 marked.setOptions({ gfm: true, breaks: true })
-
-function formatJSON(v) {
-  try { return JSON.stringify(v ?? {}, null, 2) } catch (_) { return String(v) }
-}
 
 function renderMarkdown(t) {
   try {
@@ -241,551 +59,21 @@ function renderMarkdown(t) {
     return DOMPurify.sanitize(String(t || ''))
   }
 }
-
-function isOpen(id) { return openIds.value.has(String(id)) }
-function toggleTool(id) {
-  const k = String(id)
-  const s = new Set(openIds.value)
-  if (s.has(k)) s.delete(k)
-  else s.add(k)
-  openIds.value = s
-}
-
-function taskKey(t) {
-  const id = String(t?.id || '').trim()
-  if (id) return id
-  const idx = Number(t?.index)
-  if (Number.isFinite(idx)) return `idx_${idx}`
-  const title = String(t?.title || '').trim()
-  return title ? `title_${title}` : 'idx_0'
-}
-
-function taskToggleId(messageIndex, t) {
-  return `task::${String(messageIndex)}::${taskKey(t)}`
-}
-
-function taskToolToggleId(messageIndex, t, callId) {
-  return `tool::${String(messageIndex)}::${taskKey(t)}::${String(callId || '')}`
-}
-
-function isTaskOpen(messageIndex, t) {
-  return isOpen(taskToggleId(messageIndex, t))
-}
-
-function toggleTask(messageIndex, t) {
-  toggleTool(taskToggleId(messageIndex, t))
-}
-
-function isTaskToolOpen(messageIndex, t, callId) {
-  return isOpen(taskToolToggleId(messageIndex, t, callId))
-}
-
-function toggleTaskTool(messageIndex, t, callId) {
-  toggleTool(taskToolToggleId(messageIndex, t, callId))
-}
-
-function taskStatusText(s) {
-  const v = String(s || '')
-  if (v === 'in_progress') return '进行中'
-  if (v === 'completed') return '已完成'
-  if (v === 'failed') return '失败'
-  return '待执行'
-}
-
-function taskStatusClass(s) {
-  const v = String(s || '')
-  if (v === 'in_progress') return 'status-progress'
-  if (v === 'completed') return 'status-done'
-  if (v === 'failed') return 'status-failed'
-  return 'status-pending'
-}
-
-function normalizeTasks(list) {
-  const arr = Array.isArray(list) ? list : []
-  return arr.map((t) => ({
-    id: t?.id,
-    index: Number.isFinite(Number(t?.index)) ? Number(t.index) : 0,
-    title: String(t?.title || '').trim() || '未命名子任务',
-    status: String(t?.status || 'pending'),
-    result: t?.result ?? '',
-    error: t?.error ?? '',
-    toolEvents: Array.isArray(t?.toolEvents) ? t.toolEvents : [],
-    memories: Array.isArray(t?.memories) ? t.memories : [],
-  })).sort((a, b) => Number(a.index) - Number(b.index))
-}
-
-function upsertTaskIntoMessage(msgIndex, task) {
-  const m = messages.value?.[msgIndex]
-  if (!m || !task) return
-  const existing = Array.isArray(m.tasks) ? [...m.tasks] : []
-  const key = taskKey(task)
-  const idx = existing.findIndex((x) => taskKey(x) === key)
-  const prev = idx >= 0 ? existing[idx] : null
-  const item = {
-    id: task?.id,
-    index: Number.isFinite(Number(task?.index)) ? Number(task.index) : (idx >= 0 ? existing[idx].index : existing.length),
-    title: String(task?.title || '').trim() || (idx >= 0 ? existing[idx].title : '未命名子任务'),
-    status: String(task?.status || (idx >= 0 ? existing[idx].status : 'pending')),
-    result: task?.result ?? (idx >= 0 ? existing[idx].result : ''),
-    error: task?.error ?? (idx >= 0 ? existing[idx].error : ''),
-    toolEvents: Array.isArray(prev?.toolEvents) ? prev.toolEvents : [],
-    memories: Array.isArray(prev?.memories) ? prev.memories : [],
-  }
-  if (idx >= 0) existing[idx] = { ...existing[idx], ...item }
-  else existing.push(item)
-  existing.sort((a, b) => Number(a.index) - Number(b.index))
-  m.tasks = existing
-}
-
-function ensureTaskAnchorPart(msgIndex, ts) {
-  const m = messages.value?.[msgIndex]
-  if (!m) return
-  const arr = Array.isArray(m.content) ? m.content : []
-  if (arr.some((p) => p && p.type === 'tasks')) return
-  arr.push({ type: 'tasks', timestamp: Number(ts) || Date.now() })
-  m.content = arr
-}
-
-function ensureTaskInMessage(msgIndex, taskCtx) {
-  const m = messages.value?.[msgIndex]
-  if (!m) return null
-  const list = Array.isArray(m.tasks) ? [...m.tasks] : []
-  const id = String(taskCtx?.id || '').trim()
-  const index = Number(taskCtx?.index)
-  let idx = -1
-  if (id) idx = list.findIndex((t) => String(t?.id || '') === id)
-  if (idx < 0 && Number.isFinite(index)) idx = list.findIndex((t) => Number(t?.index) === index)
-  if (idx < 0) {
-    list.push({
-      id: id || undefined,
-      index: Number.isFinite(index) ? index : list.length,
-      title: String(taskCtx?.title || '').trim() || '未命名子任务',
-      status: 'pending',
-      result: '',
-      error: '',
-      toolEvents: [],
-      memories: [],
-    })
-    list.sort((a, b) => Number(a.index) - Number(b.index))
-    m.tasks = list
-    return list.find((t) => (id ? String(t?.id || '') === id : Number(t?.index) === index)) || null
-  }
-  const t = list[idx]
-  if (!Array.isArray(t.toolEvents)) t.toolEvents = []
-  if (!Array.isArray(t.memories)) t.memories = []
-  m.tasks = list
-  return t
-}
-
-function mergeMemories(target, list) {
-  const prev = Array.isArray(target) ? target : []
-  const arr = Array.isArray(list) ? list : []
-  const seen = new Set(prev.map((m) => String(m?.key || `${m?.skill || ''}::${m?.toolName || ''}::${m?.reference || ''}::${m?.script || ''}`)))
-  const next = [...prev]
-  for (const m of arr) {
-    const k = String(m?.key || `${m?.skill || ''}::${m?.toolName || ''}::${m?.reference || ''}::${m?.script || ''}`)
-    if (!k || seen.has(k)) continue
-    seen.add(k)
-    next.push(m)
-  }
-  return next
-}
-
-function taskToolBatches(t) {
-  try {
-    const events = Array.isArray(t?.toolEvents) ? t.toolEvents : []
-    return buildToolView(events)
-  } catch (_) {
-    return []
-  }
-}
-
-async function fetchSkills() {
-  try {
-    skillsLoading.value = true
-    skillsError.value = ''
-    const r = await fetch('http://localhost:3334/api/skills/manifest')
-    const j = await r.json()
-    const arr = Array.isArray(j?.skills) ? j.skills : []
-    skills.value = arr.map(x => ({ key: String(x?.key || ''), name: String(x?.name || ''), description: String(x?.description || '') }))
-  } catch (e) {
-    skillsError.value = '加载失败'
-  } finally {
-    skillsLoading.value = false
-  }
-}
-function onSkillsToggle() {
-  skillsOpen.value = !skillsOpen.value
-  if (skillsOpen.value && skills.value.length === 0 && !skillsLoading.value) {
-    fetchSkills()
-  }
-}
-function onSkillsRefresh() {
-  fetchSkills()
-}
 function onInsertSkill(name) {
   const t = String(name || '').trim()
   if (!t) return
   input.value = input.value ? input.value + ' ' + t : t
-  skillsOpen.value = false
-}
-async function fetchModels() {
-  try {
-    modelsLoading.value = true
-    modelsError.value = ''
-    const r = await fetch('http://localhost:3334/api/models')
-    const j = await r.json()
-    const arr = Array.isArray(j?.models) ? j.models : []
-    models.value = arr.map(x => ({
-      id: String(x?.id || ''),
-      label: String(x?.label || ''),
-      provider: String(x?.provider || ''),
-      model: String(x?.model || ''),
-      baseURL: String(x?.baseURL || ''),
-      enabled: Boolean(x?.enabled),
-    }))
-    const cur = selectedModel.value
-    if (cur) {
-      const found = models.value.find(m => m.provider === cur.provider && m.model === cur.model)
-      currentModelLabel.value = found ? found.label : ''
-    } else {
-      const firstEnabled = models.value.find(m => m.enabled)
-      if (firstEnabled) {
-        selectedModel.value = { provider: firstEnabled.provider, model: firstEnabled.model }
-        currentModelLabel.value = firstEnabled.label
-      } else {
-        currentModelLabel.value = ''
-      }
-    }
-  } catch (e) {
-    modelsError.value = '加载失败'
-  } finally {
-    modelsLoading.value = false
-  }
-}
-function onModelsToggle() {
-  modelsOpen.value = !modelsOpen.value
-  if (modelsOpen.value && models.value.length === 0 && !modelsLoading.value) {
-    fetchModels()
-  }
-}
-function onModelsRefresh() {
-  fetchModels()
-}
-function onChooseModel(m) {
-  if (!m?.enabled) return
-  selectedModel.value = { provider: m.provider, model: m.model }
-  currentModelLabel.value = m.label
-  modelsOpen.value = false
 }
 
-function buildToolView(events) {
-  const out = []
-  const maps = []
-  const sorted = [...(events || [])].sort((a, b) => {
-    const ta = Number(a?.timestamp || a?.startedAt || 0)
-    const tb = Number(b?.timestamp || b?.startedAt || 0)
-    return ta - tb
-  })
-  for (const ev of sorted) {
-    if (ev?.messageType === 'tool_calls') {
-      const map = new Map()
-      const batch = { calls: [] }
-      for (const c of (ev.calls || [])) {
-        const item = {
-          id: c.id,
-          provider: c.provider,
-          tool: c.tool,
-          toolName: c.toolName,
-          name: c.name,
-          status: 'pending',
-          input: c.input,
-          inputPreview: c.inputPreview,
-          result: null,
-          error: null,
-          startedAt: c.startedAt,
-          completedAt: null,
-          durationMs: null
-        }
-        map.set(c.id, item)
-        batch.calls.push(item)
-      }
-      maps.push(map)
-      out.push(batch)
-    } else if (ev?.messageType === 'tool_update') {
-      let target = null
-      for (let i = maps.length - 1; i >= 0; i--) {
-        const m = maps[i]
-        if (m && m.has(ev.id)) { target = m.get(ev.id); break }
-      }
-      if (target) {
-        target.status = ev.status || target.status
-        target.result = ev.result ?? target.result
-        target.error = ev.error ?? null
-        target.startedAt = ev.startedAt ?? target.startedAt
-        target.completedAt = ev.completedAt ?? target.completedAt
-        target.durationMs = ev.durationMs ?? target.durationMs
-      }
-    }
-  }
-  for (const b of out) {
-    b.calls.sort((a, b) => {
-      const sa = Number(a.startedAt || 0), sb = Number(b.startedAt || 0)
-      return sa - sb
-    })
-  }
-  return out
+function toggleTool(id) {
+  toggleOpen(id)
 }
 
-function textItems(m) {
-  const arr = Array.isArray(m?.content) ? m.content : []
-  return arr.filter(x => x && x.type === 'text').map(x => String(x.text || ''))
-}
-function joinText(m) {
-  return textItems(m).join('\n\n')
-}
-function extractEvents(m) {
-  const arr = Array.isArray(m?.content) ? m.content : []
-  const out = []
-  for (const x of arr) {
-    if (x && (x.type === 'tool_calls' || x.type === 'tool_update')) {
-      out.push({ messageType: x.type === 'tool_calls' ? 'tool_calls' : 'tool_update', ...x })
-    }
-  }
-  return out
-}
-
-function buildBatchForItem(m, part) {
-  try {
-    const events = extractEvents(m)
-    const batches = buildToolView(events)
-    const ids = new Set((part?.calls || []).map((c) => String(c?.id || '')))
-    const match = batches.find((b) => b.calls.some((c) => ids.has(String(c.id || ''))))
-    return match ? [match] : []
-  } catch (_) {
-    return []
-  }
-}
-function callTitle(x) {
-  const provider = String(x?.provider || '').trim()
-  const tool = String(x?.toolName || x?.tool || '').trim()
-  // Fallback
-  return tool ? `${provider}.${tool}` : (x?.name || '未知工具')
-}
-
-function toolLabel(x) {
-  const p = String(x?.provider || '').trim()
-  const t = String(x?.toolName || x?.tool || '').trim()
-  const name = String(x?.name || '').trim()
-  if (name) return name
-  if (p && t) return `${p}.${t}`
-  return t || p || ''
-}
-
-function toolInfoLabel(call) {
-  const tool = String(call?.toolName || call?.tool || '')
-  const skill = String(call?.input?.skill || call?.result?.key || '')
-  const script = String(call?.input?.script || call?.result?.script || '')
-  const files = Array.isArray(call?.input?.files)
-    ? call.input.files
-    : (call?.input?.file ? [call.input.file] : [])
-  const extras = Array.isArray(call?.result?.extras) ? call.result.extras.map(e => e?.file).filter(Boolean) : []
-  const names = files.length ? files : extras
-  if (/readReference/i.test(tool)) {
-    const namesText = names.join(', ')
-    if (skill && namesText) return `${skill} · ${namesText}`
-    return namesText || skill
-  }
-  if (/read(\b|$)/i.test(tool)) {
-    return skill
-  }
-  if (/call(\b|$)/i.test(tool)) {
-    const scriptName = script ? script.split('/').pop() : ''
-    if (skill && scriptName) return `${skill} · ${scriptName}`
-    return skill || scriptName
-  }
-  return ''
-}
-
-function statusClass(s) {
-  const k = String(s || '').toLowerCase()
-  if (k === 'running') return 'running'
-  if (k === 'failed') return 'failed'
-  return 'completed'
-}
-
-function stateDotClass(s) {
-  const k = String(s || '').toLowerCase()
-  if (k === 'running') return 'dot dot-blue'
-  if (k === 'failed') return 'dot dot-red'
-  if (k === 'started' || k === 'pending') return 'dot dot-amber'
-  return 'dot dot-green'
-}
-
-function statusText(s) {
-  const k = String(s || '').toLowerCase()
-  if (k === 'running') return '执行中'
-  if (k === 'failed') return '失败'
-  if (k === 'started' || k === 'pending') return '排队'
-  return '完成'
-}
-
-function formatDuration(ms) {
-  const n = Number(ms) || 0
-  if (n < 1000) return `${n}ms`
-  const sec = (n / 1000)
-  return `${sec.toFixed(sec >= 10 ? 0 : 1)}s`
-}
-
-function pad2(n) { return String(n).padStart(2, '0') }
-function formatTime(ts) {
-  const d = new Date(Number(ts) || Date.now())
-  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`
-}
-
-function addMessage(role, content, citations = []) {
-  messages.value.push({ role, content: [{ type: 'text', text: String(content || '') }], citations, tasks: [] })
-  scrollToBottom()
-}
-
-async function onSend() {
-  const text = input.value
-  if (!text) return
-  
-  addMessage('user', text)
+async function onSend(text) {
+  const value = String(text || '').trim()
+  if (!value) return
   input.value = ''
-  sending.value = true
-  tokenVisible.value = true
-  try {
-    const placeholder = { role: 'assistant', content: [{ type: 'text', text: '处理中…' }], citations: [], pending: true, tasks: [] }
-    messages.value.push(placeholder)
-    const idx = messages.value.length - 1
-    const body = {
-      userInput: text,
-      sessionId: sessionId.value,
-      provider: selectedModel.value?.provider,
-      model: selectedModel.value?.model,
-    }
-    const r = await fetch('http://localhost:3334/api/agent/stream', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-    const reader = r.body.getReader()
-    const decoder = new TextDecoder()
-    let hadPlaceholder = false
-    let buf = ''
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      buf += decoder.decode(value, { stream: true })
-      const parts = buf.split('\n\n')
-      buf = parts.pop() || ''
-      for (const chunk of parts) {
-        const line = chunk.split('\n').find(l => l.startsWith('data:'))
-        if (!line) continue
-        if (!hadPlaceholder) {
-          hadPlaceholder = true
-          messages.value[idx].content = []
-        }
-        let data = null
-        try { data = JSON.parse(line.slice(5).trim()) } catch (_) { data = null }
-        if (!data) continue
-        if (data.type === 'assistant') {
-          const arr = Array.isArray(messages.value[idx].content) ? messages.value[idx].content : []
-          arr.push({ type: 'text', text: String(data.content || '') })
-          messages.value[idx].content = arr
-        } else if (data.type === 'tool_calls') {
-          if (data.task && (data.task.id != null || data.task.index != null)) {
-            ensureTaskAnchorPart(idx, Date.now())
-            const t = ensureTaskInMessage(idx, data.task)
-            if (t) {
-              t.toolEvents = Array.isArray(t.toolEvents) ? t.toolEvents : []
-              t.toolEvents.push({ messageType: 'tool_calls', calls: data.calls || [], timestamp: Date.now() })
-            }
-          } else {
-            const arr = Array.isArray(messages.value[idx].content) ? messages.value[idx].content : []
-            arr.push({ type: 'tool_calls', calls: data.calls || [], timestamp: Date.now() })
-            messages.value[idx].content = arr
-          }
-        } else if (data.type === 'tool_update') {
-          if (data.task && (data.task.id != null || data.task.index != null)) {
-            ensureTaskAnchorPart(idx, Date.now())
-            const t = ensureTaskInMessage(idx, data.task)
-            if (t) {
-              t.toolEvents = Array.isArray(t.toolEvents) ? t.toolEvents : []
-              t.toolEvents.push({ messageType: 'tool_update', id: data.id, status: data.status, result: data.result, error: data.error, startedAt: data.startedAt, completedAt: data.completedAt, durationMs: data.durationMs, timestamp: Date.now() })
-            }
-          } else {
-            const arr = Array.isArray(messages.value[idx].content) ? messages.value[idx].content : []
-            arr.push({ type: 'tool_update', id: data.id, status: data.status, result: data.result, error: data.error, startedAt: data.startedAt, completedAt: data.completedAt, durationMs: data.durationMs, timestamp: Date.now() })
-            messages.value[idx].content = arr
-          }
-        } else if (data.type === 'memory_used') {
-          const list = Array.isArray(data.memories) ? data.memories : []
-          if (list.length) {
-            if (data.task && (data.task.id != null || data.task.index != null)) {
-              ensureTaskAnchorPart(idx, Date.now())
-              const t = ensureTaskInMessage(idx, data.task)
-              if (t) t.memories = mergeMemories(t.memories, list)
-            } else {
-              const arr = Array.isArray(messages.value[idx].content) ? messages.value[idx].content : []
-              arr.push({ type: 'memory_used', memories: list, timestamp: Date.now() })
-              messages.value[idx].content = arr
-            }
-          }
-        } else if (data.type === 'llm_usage') {
-          applyUsage(data.usage)
-        } else if (data.type === 'task_list') {
-          const m = messages.value[idx]
-          if (m) {
-            m.tasks = normalizeTasks(data.tasks || []).map((t) => ({ ...t, toolEvents: Array.isArray(t.toolEvents) ? t.toolEvents : [], memories: Array.isArray(t.memories) ? t.memories : [] }))
-            ensureTaskAnchorPart(idx, Date.now())
-          }
-        } else if (data.type === 'task_update') {
-          ensureTaskAnchorPart(idx, Date.now())
-          upsertTaskIntoMessage(idx, data.task)
-        } else if (data.type === 'done') {
-          const arr = Array.isArray(messages.value[idx].content) ? messages.value[idx].content : []
-          if (typeof data.reply === 'string') arr.push({ type: 'text', text: String(data.reply) })
-          messages.value[idx].content = arr
-          messages.value[idx].pending = false
-          sending.value = false
-        } else if (data.type === 'error') {
-          messages.value[idx].content = [{ type: 'text', text: '执行失败' }]
-          messages.value[idx].pending = false
-          sending.value = false
-        } else if (data.type === 'end') {
-          messages.value[idx].pending = false
-          sending.value = false
-        }
-      }
-    }
-  } catch (e) {
-    addMessage('assistant', '调用失败，请检查网络或密钥。')
-    sending.value = false
-  }
-}
-
-function formatTokens(n) {
-  const v = Number(n)
-  if (!Number.isFinite(v)) return '-'
-  return String(Math.max(0, Math.floor(v)))
-}
-
-function applyUsage(u) {
-  if (!u || typeof u !== 'object') return
-  const p = Number(u.promptTokens)
-  const c = Number(u.completionTokens)
-  const t = Number(u.totalTokens)
-  const nextLast = { ...tokenLast.value }
-  if (Number.isFinite(p)) nextLast.promptTokens = p
-  if (Number.isFinite(c)) nextLast.completionTokens = c
-  if (Number.isFinite(t)) nextLast.totalTokens = t
-  nextLast.estimated = Boolean(u.estimated)
-  tokenLast.value = nextLast
-
-  const tot = { ...tokenTotal.value }
-  if (Number.isFinite(p)) tot.promptTokens += p
-  if (Number.isFinite(c)) tot.completionTokens += c
-  if (Number.isFinite(t)) tot.totalTokens += t
-  tokenTotal.value = tot
+  await send(value, { sessionId: sessionId.value, selection: selectedModel.value, onUpdate: scrollToBottom })
 }
 
 onMounted(() => {
@@ -793,27 +81,14 @@ onMounted(() => {
     sessionId.value = `pm_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
     localStorage.setItem('pm_session_id', sessionId.value)
   }
-  addMessage('assistant', '你好！我是智能助手，可以帮助你解决问题。\n\n请输入你的需求开始吧。')
-  document.addEventListener('click', (ev) => {
-    const el = skillsDropdownRef.value
-    const el2 = modelsDropdownRef.value
-    const toolbar = document.querySelector('.toolbar')
-    if (!el || !toolbar) return
-    const target = ev.target
-    if (skillsOpen.value && target && !toolbar.contains(target)) {
-      skillsOpen.value = false
-    }
-    if (modelsOpen.value && target && !toolbar.contains(target)) {
-      modelsOpen.value = false
-    }
-  })
-  fetchModels()
+  addMessage('assistant', '你好！我是智能助手，可以帮助你解决问题。\n\n请输入你的需求开始吧。', [], scrollToBottom)
+  onModelsRefresh()
 })
 
 // api key handling removed
 </script>
 
-<style scoped>
+<style>
 .app { color: #0f172a; background: #ffffff; min-height: 100vh; }
 .header { position: sticky; top: 0; background: #ffffff; border-bottom: 1px solid #e5e7eb; z-index: 10; }
 .header-inner { max-width: 960px; margin: 0 auto; padding: 12px 20px; display: flex; align-items: center; gap: 12px; }
