@@ -57,37 +57,13 @@
     </header>
 
     <main class="main">
-      <div class="side-panels">
-        <div class="token-panel" v-if="tokenVisible">
-          <div class="token-line">
-            最近一次：输入 {{ formatTokens(tokenLast.promptTokens) }} / 输出 {{ formatTokens(tokenLast.completionTokens) }} / 合计 {{ formatTokens(tokenLast.totalTokens) }}
-            <span v-if="tokenLast.estimated" class="token-hint">（估算）</span>
-          </div>
-          <div class="token-line">
-            累计：输入 {{ formatTokens(tokenTotal.promptTokens) }} / 输出 {{ formatTokens(tokenTotal.completionTokens) }} / 合计 {{ formatTokens(tokenTotal.totalTokens) }}
-          </div>
+      <div class="token-panel" v-if="tokenVisible">
+        <div class="token-line">
+          最近一次：输入 {{ formatTokens(tokenLast.promptTokens) }} / 输出 {{ formatTokens(tokenLast.completionTokens) }} / 合计 {{ formatTokens(tokenLast.totalTokens) }}
+          <span v-if="tokenLast.estimated" class="token-hint">（估算）</span>
         </div>
-        <div class="task-panel" v-if="taskVisible">
-          <div class="task-head">
-            <span>子任务</span>
-            <span class="task-count">{{ tasks.length }}</span>
-          </div>
-          <div v-if="!tasks.length" class="task-empty">暂无子任务</div>
-          <div v-else class="task-list">
-            <div v-for="t in tasks" :key="taskKey(t)" class="task-item">
-              <div class="task-row">
-                <span class="task-index">{{ (Number(t.index) || 0) + 1 }}</span>
-                <span class="task-title" :title="t.title">{{ t.title }}</span>
-                <span class="task-status" :class="taskStatusClass(t.status)">{{ taskStatusText(t.status) }}</span>
-                <button class="task-toggle" type="button" @click="toggleTask(taskKey(t))">{{ isTaskOpen(taskKey(t)) ? '收起' : '展开' }}</button>
-              </div>
-              <div class="task-body" v-show="isTaskOpen(taskKey(t))">
-                <pre v-if="t.result" class="task-result">{{ t.result }}</pre>
-                <pre v-else-if="t.status === 'failed'" class="task-result">{{ t.error || '执行失败' }}</pre>
-                <div v-else class="task-result-empty">暂无结果</div>
-              </div>
-            </div>
-          </div>
+        <div class="token-line">
+          累计：输入 {{ formatTokens(tokenTotal.promptTokens) }} / 输出 {{ formatTokens(tokenTotal.completionTokens) }} / 合计 {{ formatTokens(tokenTotal.totalTokens) }}
         </div>
       </div>
       <div class="messages" ref="messagesRef">
@@ -101,6 +77,27 @@
             <template v-else>你</template>
           </div>
         <div class="content">
+            <div v-if="m.role === 'assistant' && Array.isArray(m.tasks) && m.tasks.length" class="task-card">
+              <div class="task-card-head">
+                <span class="task-pill">子任务</span>
+                <span class="task-count">{{ m.tasks.length }}</span>
+              </div>
+              <div class="task-card-list">
+                <div v-for="t in m.tasks" :key="taskKey(t)" class="task-card-item">
+                  <div class="task-card-row">
+                    <span class="task-index">{{ (Number(t.index) || 0) + 1 }}</span>
+                    <span class="task-title" :title="t.title">{{ t.title }}</span>
+                    <span class="task-status" :class="taskStatusClass(t.status)">{{ taskStatusText(t.status) }}</span>
+                    <button class="task-toggle" type="button" @click="toggleTask(idx, t)">{{ isTaskOpen(idx, t) ? '收起' : '展开' }}</button>
+                  </div>
+                  <div class="task-body" v-show="isTaskOpen(idx, t)">
+                    <pre v-if="t.result" class="task-result">{{ t.result }}</pre>
+                    <pre v-else-if="t.status === 'failed'" class="task-result">{{ t.error || '执行失败' }}</pre>
+                    <div v-else class="task-result-empty">暂无结果</div>
+                  </div>
+                </div>
+              </div>
+            </div>
             <template v-for="(part, pi) in m.content" :key="pi">
               <div v-if="part?.type === 'text' && m.role === 'assistant'" class="md" v-html="renderMarkdown(String(part?.text || ''))"></div>
               <pre v-else-if="part?.type === 'text'">{{ String(part?.text || '') }}</pre>
@@ -183,9 +180,6 @@ const skillsDropdownRef = ref(null)
 const tokenLast = ref({ promptTokens: 0, completionTokens: 0, totalTokens: 0, estimated: false })
 const tokenTotal = ref({ promptTokens: 0, completionTokens: 0, totalTokens: 0 })
 const tokenVisible = ref(false)
-const tasks = ref([])
-const taskVisible = ref(false)
-const openTaskIds = ref(new Set())
 const modelsOpen = ref(false)
 const models = ref([])
 const modelsLoading = ref(false)
@@ -229,19 +223,20 @@ function taskKey(t) {
   if (id) return id
   const idx = Number(t?.index)
   if (Number.isFinite(idx)) return `idx_${idx}`
-  return `task_${Math.random().toString(36).slice(2, 10)}`
+  const title = String(t?.title || '').trim()
+  return title ? `title_${title}` : 'idx_0'
 }
 
-function isTaskOpen(id) {
-  return openTaskIds.value.has(String(id))
+function taskToggleId(messageIndex, t) {
+  return `task::${String(messageIndex)}::${taskKey(t)}`
 }
 
-function toggleTask(id) {
-  const k = String(id)
-  const s = new Set(openTaskIds.value)
-  if (s.has(k)) s.delete(k)
-  else s.add(k)
-  openTaskIds.value = s
+function isTaskOpen(messageIndex, t) {
+  return isOpen(taskToggleId(messageIndex, t))
+}
+
+function toggleTask(messageIndex, t) {
+  toggleTool(taskToggleId(messageIndex, t))
 }
 
 function taskStatusText(s) {
@@ -260,9 +255,9 @@ function taskStatusClass(s) {
   return 'status-pending'
 }
 
-function setTaskList(list) {
+function normalizeTasks(list) {
   const arr = Array.isArray(list) ? list : []
-  tasks.value = arr.map((t) => ({
+  return arr.map((t) => ({
     id: t?.id,
     index: Number.isFinite(Number(t?.index)) ? Number(t.index) : 0,
     title: String(t?.title || '').trim() || '未命名子任务',
@@ -272,23 +267,24 @@ function setTaskList(list) {
   })).sort((a, b) => Number(a.index) - Number(b.index))
 }
 
-function upsertTask(task) {
-  if (!task) return
+function upsertTaskIntoMessage(msgIndex, task) {
+  const m = messages.value?.[msgIndex]
+  if (!m || !task) return
+  const existing = Array.isArray(m.tasks) ? [...m.tasks] : []
   const key = taskKey(task)
-  const next = Array.isArray(tasks.value) ? [...tasks.value] : []
-  const idx = next.findIndex((x) => taskKey(x) === key)
+  const idx = existing.findIndex((x) => taskKey(x) === key)
   const item = {
     id: task?.id,
-    index: Number.isFinite(Number(task?.index)) ? Number(task.index) : (idx >= 0 ? next[idx].index : next.length),
-    title: String(task?.title || '').trim() || (idx >= 0 ? next[idx].title : '未命名子任务'),
-    status: String(task?.status || (idx >= 0 ? next[idx].status : 'pending')),
-    result: task?.result ?? (idx >= 0 ? next[idx].result : ''),
-    error: task?.error ?? (idx >= 0 ? next[idx].error : ''),
+    index: Number.isFinite(Number(task?.index)) ? Number(task.index) : (idx >= 0 ? existing[idx].index : existing.length),
+    title: String(task?.title || '').trim() || (idx >= 0 ? existing[idx].title : '未命名子任务'),
+    status: String(task?.status || (idx >= 0 ? existing[idx].status : 'pending')),
+    result: task?.result ?? (idx >= 0 ? existing[idx].result : ''),
+    error: task?.error ?? (idx >= 0 ? existing[idx].error : ''),
   }
-  if (idx >= 0) next[idx] = { ...next[idx], ...item }
-  else next.push(item)
-  next.sort((a, b) => Number(a.index) - Number(b.index))
-  tasks.value = next
+  if (idx >= 0) existing[idx] = { ...existing[idx], ...item }
+  else existing.push(item)
+  existing.sort((a, b) => Number(a.index) - Number(b.index))
+  m.tasks = existing
 }
 
 async function fetchSkills() {
@@ -547,9 +543,6 @@ async function onSend() {
   input.value = ''
   sending.value = true
   tokenVisible.value = true
-  taskVisible.value = false
-  tasks.value = []
-  openTaskIds.value = new Set()
   try {
     const placeholder = { role: 'assistant', content: [{ type: 'text', text: '处理中…' }], citations: [], pending: true }
     messages.value.push(placeholder)
@@ -603,14 +596,10 @@ async function onSend() {
         } else if (data.type === 'llm_usage') {
           applyUsage(data.usage)
         } else if (data.type === 'task_list') {
-          debugger
-          taskVisible.value = true
-          setTaskList(data.tasks || [])
-          openTaskIds.value = new Set()
+          const m = messages.value[idx]
+          if (m) m.tasks = normalizeTasks(data.tasks || [])
         } else if (data.type === 'task_update') {
-          debugger
-          taskVisible.value = true
-          upsertTask(data.task)
+          upsertTaskIntoMessage(idx, data.task)
         } else if (data.type === 'done') {
           const arr = Array.isArray(messages.value[idx].content) ? messages.value[idx].content : []
           if (typeof data.reply === 'string') arr.push({ type: 'text', text: String(data.reply) })
@@ -691,17 +680,16 @@ onMounted(() => {
 .toolbar { margin-left: auto; display: flex; align-items: center; gap: 8px; position: relative; }
 .tool-btn { display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid #e5e7eb; background: #fff; color: #0f172a; font-size: 12px; border-radius: 12px; }
 .tool-btn:hover { background: #f8fafc; }
-.side-panels { position: fixed; right: 20px; top: 76px; z-index: 9; width: 320px; display: flex; flex-direction: column; gap: 10px; }
-.token-panel { padding: 10px 12px; border: 1px solid #e5e7eb; border-radius: 12px; background: #ffffff; font-size: 12px; color: #475569; box-shadow: 0 12px 28px rgba(17,24,39,0.08); }
+.token-panel { position: fixed; right: 20px; top: 76px; z-index: 9; width: 280px; padding: 10px 12px; border: 1px solid #e5e7eb; border-radius: 12px; background: #ffffff; font-size: 12px; color: #475569; box-shadow: 0 12px 28px rgba(17,24,39,0.08); }
 .token-line { line-height: 1.6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .token-hint { color: #94a3b8; margin-left: 4px; }
-.task-panel { padding: 10px 12px; border: 1px solid #e5e7eb; border-radius: 12px; background: #ffffff; font-size: 12px; color: #0f172a; box-shadow: 0 12px 28px rgba(17,24,39,0.08); max-height: 52vh; overflow: auto; }
-.task-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; color: #475569; font-weight: 600; }
+.task-card { margin: 10px 0 14px; padding: 10px 12px; border: 1px solid #e5e7eb; border-radius: 12px; background: #f8fafc; }
+.task-card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.task-pill { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: #e0f2fe; color: #0369a1; font-weight: 600; }
 .task-count { margin-left: auto; font-size: 11px; color: #64748b; background: #f1f5f9; border: 1px solid #e5e7eb; padding: 1px 6px; border-radius: 999px; }
-.task-empty { color: #64748b; padding: 6px 0; }
-.task-list { display: grid; grid-template-columns: 1fr; gap: 8px; }
-.task-item { border: 1px solid #e5e7eb; border-radius: 12px; background: #ffffff; }
-.task-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; }
+.task-card-list { display: grid; grid-template-columns: 1fr; gap: 8px; }
+.task-card-item { border: 1px solid #e5e7eb; border-radius: 12px; background: #ffffff; }
+.task-card-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; }
 .task-index { font-size: 11px; color: #64748b; width: 18px; text-align: right; }
 .task-title { flex: 1; font-weight: 500; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .task-status { font-size: 11px; padding: 1px 6px; border-radius: 999px; border: 1px solid #e5e7eb; color: #475569; background: #ffffff; }
@@ -715,8 +703,7 @@ onMounted(() => {
 .task-result { margin: 0; white-space: pre-wrap; line-height: 1.6; font-size: 12px; color: #0f172a; }
 .task-result-empty { color: #64748b; }
 @media (max-width: 1100px) {
-  .side-panels { position: sticky; top: 64px; right: auto; width: min(820px, calc(100% - 40px)); margin: 8px auto 0; box-shadow: none; background: transparent; }
-  .token-panel, .task-panel { box-shadow: none; background: #f8fafc; }
+  .token-panel { position: sticky; top: 64px; right: auto; width: min(820px, calc(100% - 40px)); margin: 8px auto 0; box-shadow: none; background: #f8fafc; }
   .token-line { white-space: normal; }
 }
 .skills-dropdown { position: absolute; right: 0; top: 40px; width: 320px; background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 12px 28px rgba(17,24,39,0.08); }
