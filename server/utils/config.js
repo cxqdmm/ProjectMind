@@ -10,20 +10,20 @@ export function readLLMConfig() {
   return {
     models: [
       {
-        key: 'zhipuai',
-        label: 'ZhipuAI',
-        provider: 'zhipuai',
-        baseURL: 'https://open.bigmodel.cn/api/paas/v4/',
-        model: 'glm-4.6',
-        envKey: 'ZHIPUAI_API_KEY',
-      },
-      {
         key: 'qwen',
         label: 'Qwen',
         provider: 'qwen',
         baseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
         model: 'qwen-plus',
         envKey: 'QWEN_API_KEY',
+      },
+      {
+        key: 'zhipuai',
+        label: 'ZhipuAI',
+        provider: 'zhipuai',
+        baseURL: 'https://open.bigmodel.cn/api/paas/v4/',
+        model: 'glm-4.6',
+        envKey: 'ZHIPUAI_API_KEY',
       },
     ],
     historyMaxTurns: 100,

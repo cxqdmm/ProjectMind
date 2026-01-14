@@ -94,6 +94,39 @@
                     <pre v-if="t.result" class="task-result">{{ t.result }}</pre>
                     <pre v-else-if="t.status === 'failed'" class="task-result">{{ t.error || '执行失败' }}</pre>
                     <div v-else class="task-result-empty">暂无结果</div>
+                    <div v-if="Array.isArray(t.memories) && t.memories.length" class="task-sub">
+                      <div class="task-subhead">记忆</div>
+                      <MemoryUsedList :memories="t.memories" />
+                    </div>
+                    <div v-if="taskToolBatches(t).length" class="task-sub">
+                      <div class="task-subhead">工具</div>
+                      <div class="tool-events task-tools">
+                        <div v-for="(batch, bi) in taskToolBatches(t)" :key="bi" class="tool-group compact">
+                          <div class="tool-list">
+                            <div v-for="call in batch.calls" :key="call.id" class="tool-row">
+                              <div class="tool-row-head">
+                                <span class="tool-row-name">{{ callTitle(call) }}</span>
+                                <span v-if="toolInfoLabel(call)" class="tool-row-ref">{{ toolInfoLabel(call) }}</span>
+                                <span class="tool-row-state-dot">
+                                  <i :class="stateDotClass(call.status)"></i>
+                                </span>
+                                <button class="tool-row-toggle" type="button" @click="toggleTaskTool(idx, t, call.id)">{{ isTaskToolOpen(idx, t, call.id) ? '收起' : '展开' }}</button>
+                              </div>
+                              <div class="tool-row-body" v-show="isTaskToolOpen(idx, t, call.id)">
+                                <div class="tool-pane">
+                                  <div class="tool-pane-title">输入</div>
+                                  <pre class="tool-pane-pre">{{ formatJSON(call.inputPreview || call.input || {}) }}</pre>
+                                </div>
+                                <div class="tool-pane">
+                                  <div class="tool-pane-title">输出</div>
+                                  <pre class="tool-pane-pre">{{ call.error ? String(call.error) : formatJSON(call.result) }}</pre>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -231,12 +264,24 @@ function taskToggleId(messageIndex, t) {
   return `task::${String(messageIndex)}::${taskKey(t)}`
 }
 
+function taskToolToggleId(messageIndex, t, callId) {
+  return `tool::${String(messageIndex)}::${taskKey(t)}::${String(callId || '')}`
+}
+
 function isTaskOpen(messageIndex, t) {
   return isOpen(taskToggleId(messageIndex, t))
 }
 
 function toggleTask(messageIndex, t) {
   toggleTool(taskToggleId(messageIndex, t))
+}
+
+function isTaskToolOpen(messageIndex, t, callId) {
+  return isOpen(taskToolToggleId(messageIndex, t, callId))
+}
+
+function toggleTaskTool(messageIndex, t, callId) {
+  toggleTool(taskToolToggleId(messageIndex, t, callId))
 }
 
 function taskStatusText(s) {
@@ -264,6 +309,8 @@ function normalizeTasks(list) {
     status: String(t?.status || 'pending'),
     result: t?.result ?? '',
     error: t?.error ?? '',
+    toolEvents: Array.isArray(t?.toolEvents) ? t.toolEvents : [],
+    memories: Array.isArray(t?.memories) ? t.memories : [],
   })).sort((a, b) => Number(a.index) - Number(b.index))
 }
 
@@ -273,6 +320,7 @@ function upsertTaskIntoMessage(msgIndex, task) {
   const existing = Array.isArray(m.tasks) ? [...m.tasks] : []
   const key = taskKey(task)
   const idx = existing.findIndex((x) => taskKey(x) === key)
+  const prev = idx >= 0 ? existing[idx] : null
   const item = {
     id: task?.id,
     index: Number.isFinite(Number(task?.index)) ? Number(task.index) : (idx >= 0 ? existing[idx].index : existing.length),
@@ -280,11 +328,67 @@ function upsertTaskIntoMessage(msgIndex, task) {
     status: String(task?.status || (idx >= 0 ? existing[idx].status : 'pending')),
     result: task?.result ?? (idx >= 0 ? existing[idx].result : ''),
     error: task?.error ?? (idx >= 0 ? existing[idx].error : ''),
+    toolEvents: Array.isArray(prev?.toolEvents) ? prev.toolEvents : [],
+    memories: Array.isArray(prev?.memories) ? prev.memories : [],
   }
   if (idx >= 0) existing[idx] = { ...existing[idx], ...item }
   else existing.push(item)
   existing.sort((a, b) => Number(a.index) - Number(b.index))
   m.tasks = existing
+}
+
+function ensureTaskInMessage(msgIndex, taskCtx) {
+  const m = messages.value?.[msgIndex]
+  if (!m) return null
+  const list = Array.isArray(m.tasks) ? [...m.tasks] : []
+  const id = String(taskCtx?.id || '').trim()
+  const index = Number(taskCtx?.index)
+  let idx = -1
+  if (id) idx = list.findIndex((t) => String(t?.id || '') === id)
+  if (idx < 0 && Number.isFinite(index)) idx = list.findIndex((t) => Number(t?.index) === index)
+  if (idx < 0) {
+    list.push({
+      id: id || undefined,
+      index: Number.isFinite(index) ? index : list.length,
+      title: String(taskCtx?.title || '').trim() || '未命名子任务',
+      status: 'pending',
+      result: '',
+      error: '',
+      toolEvents: [],
+      memories: [],
+    })
+    list.sort((a, b) => Number(a.index) - Number(b.index))
+    m.tasks = list
+    return list.find((t) => (id ? String(t?.id || '') === id : Number(t?.index) === index)) || null
+  }
+  const t = list[idx]
+  if (!Array.isArray(t.toolEvents)) t.toolEvents = []
+  if (!Array.isArray(t.memories)) t.memories = []
+  m.tasks = list
+  return t
+}
+
+function mergeMemories(target, list) {
+  const prev = Array.isArray(target) ? target : []
+  const arr = Array.isArray(list) ? list : []
+  const seen = new Set(prev.map((m) => String(m?.key || `${m?.skill || ''}::${m?.toolName || ''}::${m?.reference || ''}::${m?.script || ''}`)))
+  const next = [...prev]
+  for (const m of arr) {
+    const k = String(m?.key || `${m?.skill || ''}::${m?.toolName || ''}::${m?.reference || ''}::${m?.script || ''}`)
+    if (!k || seen.has(k)) continue
+    seen.add(k)
+    next.push(m)
+  }
+  return next
+}
+
+function taskToolBatches(t) {
+  try {
+    const events = Array.isArray(t?.toolEvents) ? t.toolEvents : []
+    return buildToolView(events)
+  } catch (_) {
+    return []
+  }
 }
 
 async function fetchSkills() {
@@ -579,25 +683,46 @@ async function onSend() {
           arr.push({ type: 'text', text: String(data.content || '') })
           messages.value[idx].content = arr
         } else if (data.type === 'tool_calls') {
-          const arr = Array.isArray(messages.value[idx].content) ? messages.value[idx].content : []
-          arr.push({ type: 'tool_calls', calls: data.calls || [], timestamp: Date.now() })
-          messages.value[idx].content = arr
+          if (data.task && (data.task.id != null || data.task.index != null)) {
+            const t = ensureTaskInMessage(idx, data.task)
+            if (t) {
+              t.toolEvents = Array.isArray(t.toolEvents) ? t.toolEvents : []
+              t.toolEvents.push({ messageType: 'tool_calls', calls: data.calls || [], timestamp: Date.now() })
+            }
+          } else {
+            const arr = Array.isArray(messages.value[idx].content) ? messages.value[idx].content : []
+            arr.push({ type: 'tool_calls', calls: data.calls || [], timestamp: Date.now() })
+            messages.value[idx].content = arr
+          }
         } else if (data.type === 'tool_update') {
-          const arr = Array.isArray(messages.value[idx].content) ? messages.value[idx].content : []
-          arr.push({ type: 'tool_update', id: data.id, status: data.status, result: data.result, error: data.error, startedAt: data.startedAt, completedAt: data.completedAt, durationMs: data.durationMs, timestamp: Date.now() })
-          messages.value[idx].content = arr
+          if (data.task && (data.task.id != null || data.task.index != null)) {
+            const t = ensureTaskInMessage(idx, data.task)
+            if (t) {
+              t.toolEvents = Array.isArray(t.toolEvents) ? t.toolEvents : []
+              t.toolEvents.push({ messageType: 'tool_update', id: data.id, status: data.status, result: data.result, error: data.error, startedAt: data.startedAt, completedAt: data.completedAt, durationMs: data.durationMs, timestamp: Date.now() })
+            }
+          } else {
+            const arr = Array.isArray(messages.value[idx].content) ? messages.value[idx].content : []
+            arr.push({ type: 'tool_update', id: data.id, status: data.status, result: data.result, error: data.error, startedAt: data.startedAt, completedAt: data.completedAt, durationMs: data.durationMs, timestamp: Date.now() })
+            messages.value[idx].content = arr
+          }
         } else if (data.type === 'memory_used') {
-          const arr = Array.isArray(messages.value[idx].content) ? messages.value[idx].content : []
           const list = Array.isArray(data.memories) ? data.memories : []
           if (list.length) {
-            arr.push({ type: 'memory_used', memories: list, timestamp: Date.now() })
-            messages.value[idx].content = arr
+            if (data.task && (data.task.id != null || data.task.index != null)) {
+              const t = ensureTaskInMessage(idx, data.task)
+              if (t) t.memories = mergeMemories(t.memories, list)
+            } else {
+              const arr = Array.isArray(messages.value[idx].content) ? messages.value[idx].content : []
+              arr.push({ type: 'memory_used', memories: list, timestamp: Date.now() })
+              messages.value[idx].content = arr
+            }
           }
         } else if (data.type === 'llm_usage') {
           applyUsage(data.usage)
         } else if (data.type === 'task_list') {
           const m = messages.value[idx]
-          if (m) m.tasks = normalizeTasks(data.tasks || [])
+          if (m) m.tasks = normalizeTasks(data.tasks || []).map((t) => ({ ...t, toolEvents: Array.isArray(t.toolEvents) ? t.toolEvents : [], memories: Array.isArray(t.memories) ? t.memories : [] }))
         } else if (data.type === 'task_update') {
           upsertTaskIntoMessage(idx, data.task)
         } else if (data.type === 'done') {
@@ -702,6 +827,9 @@ onMounted(() => {
 .task-body { border-top: 1px solid #e5e7eb; padding: 8px 10px; background: #f8fafc; border-bottom-left-radius: 12px; border-bottom-right-radius: 12px; }
 .task-result { margin: 0; white-space: pre-wrap; line-height: 1.6; font-size: 12px; color: #0f172a; }
 .task-result-empty { color: #64748b; }
+.task-sub { margin-top: 10px; }
+.task-subhead { font-size: 12px; font-weight: 600; color: #475569; margin: 6px 0; }
+.task-tools { max-width: none; margin: 8px 0 0; }
 @media (max-width: 1100px) {
   .token-panel { position: sticky; top: 64px; right: auto; width: min(820px, calc(100% - 40px)); margin: 8px auto 0; box-shadow: none; background: #f8fafc; }
   .token-line { white-space: normal; }

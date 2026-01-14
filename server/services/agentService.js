@@ -87,7 +87,7 @@ function appendOpenMsgsToConversation(messages, openMsgs) {
 
 async function execSingleToolCall(ctx, messages, call) {
   const started = markToolCallStarted(call.id)
-  if (started && typeof ctx.emit === 'function') ctx.emit({ type: 'tool_update', id: started.id, status: 'running', startedAt: started.startedAt, timestamp: Date.now() })
+  if (started && typeof ctx.emit === 'function') ctx.emit({ type: 'tool_update', id: started.id, status: 'running', startedAt: started.startedAt, timestamp: Date.now(), task: ctx.taskCtx })
   const t0 = Date.now()
   try {
     let toolResult = null
@@ -100,14 +100,14 @@ async function execSingleToolCall(ctx, messages, call) {
     }
     const done = markToolCallCompleted(call.id, toolResult)
     if (done && typeof ctx.emit === 'function') {
-      ctx.emit({ type: 'tool_update', id: done.id, status: 'completed', result: toolResult, startedAt: done.startedAt, completedAt: done.completedAt, durationMs: done.durationMs ?? (Date.now() - t0), timestamp: Date.now() })
+      ctx.emit({ type: 'tool_update', id: done.id, status: 'completed', result: toolResult, startedAt: done.startedAt, completedAt: done.completedAt, durationMs: done.durationMs ?? (Date.now() - t0), timestamp: Date.now(), task: ctx.taskCtx })
     }
     appendOpenMsgsToConversation(messages, buildOpenMsgs(call, toolResult, null))
   } catch (e) {
     const errorMsg = String(e?.message || e)
     const failed = markToolCallFailed(call.id, errorMsg)
     if (failed && typeof ctx.emit === 'function') {
-      ctx.emit({ type: 'tool_update', id: failed.id, status: 'failed', error: errorMsg, startedAt: failed.startedAt, completedAt: failed.completedAt, durationMs: failed.durationMs ?? (Date.now() - t0), timestamp: Date.now() })
+      ctx.emit({ type: 'tool_update', id: failed.id, status: 'failed', error: errorMsg, startedAt: failed.startedAt, completedAt: failed.completedAt, durationMs: failed.durationMs ?? (Date.now() - t0), timestamp: Date.now(), task: ctx.taskCtx })
     }
     appendOpenMsgsToConversation(messages, buildOpenMsgs(call, null, errorMsg))
   }
@@ -153,7 +153,7 @@ function buildTaskQuery(userInput, task, depTexts) {
   return parts.filter(Boolean).join('\n\n')
 }
 
-async function selectTaskMemoryMessages(ctx, injectedMemoryKeys, memQuery) {
+async function selectTaskMemoryMessages(ctx, injectedMemoryKeys, memQuery, taskCtx) {
   const { selected: selectedTaskResults } = await selectTaskResultMemoriesForQuestion(ctx.provider, [memQuery], 2)
   const taskResultMessages = buildTaskResultMessages(selectedTaskResults)
   const { selected: taskSelectedMemories } = await selectSkillMemoriesForQuestion(ctx.provider, [memQuery], 5)
@@ -163,7 +163,7 @@ async function selectTaskMemoryMessages(ctx, injectedMemoryKeys, memQuery) {
   })
   if (toInject.length > 0) {
     for (const m of toInject) injectedMemoryKeys.add(String(m.key || ''))
-    if (typeof ctx.emit === 'function') ctx.emit({ type: 'memory_used', memories: buildMemoryEventPayload(toInject) })
+    if (typeof ctx.emit === 'function') ctx.emit({ type: 'memory_used', memories: buildMemoryEventPayload(toInject), task: taskCtx })
   }
   return { taskResultMessages, taskMemoryMessages: buildMemoryMessages(toInject) }
 }
@@ -197,7 +197,7 @@ async function runTaskToolLoop(ctx, messages) {
     const calls = parseToolCalls(reply) || []
     if (calls.length > 0) {
       const prepared = enqueueToolCalls(calls)
-      if (typeof ctx.emit === 'function') ctx.emit({ type: 'tool_calls', calls: prepared })
+      if (typeof ctx.emit === 'function') ctx.emit({ type: 'tool_calls', calls: prepared, task: ctx.taskCtx })
       await drainToolQueue(ctx, messages)
       ctx.step++
       continue
@@ -210,9 +210,10 @@ async function runSingleTask(ctx, baseMessages, injectedMemoryKeys, taskResults,
   resetToolQueue()
   const inProg = updateTask(nextTask.id, { status: 'in_progress' })
   if (typeof ctx.emit === 'function') ctx.emit({ type: 'task_update', task: inProg })
+  ctx.taskCtx = { id: inProg.id, index: inProg.index, title: inProg.title }
   const depTexts = buildDepTexts(taskResults, inProg)
   const memQuery = buildTaskQuery(ctx.userInput, inProg, depTexts)
-  const { taskResultMessages, taskMemoryMessages } = await selectTaskMemoryMessages(ctx, injectedMemoryKeys, memQuery)
+  const { taskResultMessages, taskMemoryMessages } = await selectTaskMemoryMessages(ctx, injectedMemoryKeys, memQuery, ctx.taskCtx)
   const messages = buildTaskMessages(baseMessages, taskResultMessages, taskMemoryMessages, ctx.userInput, inProg?.title, depTexts)
   const final = await runTaskToolLoop(ctx, messages)
   const doneTask = updateTask(nextTask.id, { status: 'completed', result: final })
