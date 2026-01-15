@@ -138,7 +138,6 @@ async function onDeprecate(item) {
 async function onDelete(item) {
   const id = String(item?.id || item?.file || '')
   if (!id) return
-  if (!confirm(`确认物理删除该记忆文件？\\n\\n${id}\\n\\n此操作不可恢复。`)) return
   try {
     await admin.remove(id)
     await admin.refresh()

@@ -16,6 +16,56 @@ async function createChatReply(provider, messages, tools) {
   return { choices: [{ message: { content } }] }
 }
 
+function stripCodeFences(text) {
+  const s = String(text || '').trim()
+  if (!s) return ''
+  const m = s.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i)
+  return m ? String(m[1] || '').trim() : s
+}
+
+function parseFollowupTasks(reply) {
+  const raw = stripCodeFences(reply)
+  const idx = raw.toUpperCase().indexOf('FOLLOWUP_TASKS:')
+  if (idx < 0) return null
+  const payload = raw.slice(idx + 'FOLLOWUP_TASKS:'.length).trim()
+  const jsonText = stripCodeFences(payload)
+  let arr = null
+  try {
+    arr = JSON.parse(jsonText)
+  } catch (_) {
+    const start = jsonText.indexOf('[')
+    const end = jsonText.lastIndexOf(']')
+    if (start >= 0 && end > start) {
+      try {
+        arr = JSON.parse(jsonText.slice(start, end + 1))
+      } catch (_) {
+        arr = null
+      }
+    }
+  }
+  if (!Array.isArray(arr)) return null
+  const out = []
+  for (const t of arr) {
+    if (!t || typeof t !== 'object') continue
+    const title = String(t.title || '').trim()
+    if (!title) continue
+    out.push({
+      title,
+      deliverable: String(t.deliverable || '').trim(),
+      suggestedSkills: Array.isArray(t.suggestedSkills) ? t.suggestedSkills.map((x) => String(x || '').trim()).filter(Boolean) : [],
+      dependsOn: Array.isArray(t.dependsOn) ? t.dependsOn.map((x) => Number(x)).filter((n) => Number.isFinite(n)) : [],
+    })
+  }
+  return out
+}
+
+function parseFinalReply(reply) {
+  const raw = stripCodeFences(reply)
+  const m = raw.match(/FINAL:\s*([\s\S]*)$/i)
+  if (!m) return null
+  return String(m[1] || '').trim()
+}
+
 async function buildContext(userInput, sessionId, emit, selection) {
   const cfg = readLLMConfig()
   await initMcpClients()
@@ -182,8 +232,9 @@ function buildTaskMessages(baseMessages, taskResultMessages, taskMemoryMessages,
         String(taskTitle || '') +
         (depTexts ? `\n\n依赖子任务结果：\n${depTexts}` : '') +
         '\n\n请完成该子任务，并严格按以下格式输出（只能二选一）：\n' +
-        '- 如果还需要调用工具才能完成子任务：只输出 CALL_JSONS: [...]（不要输出其它文字）。\n' +
-        '- 如果子任务已完成且不需要任何工具调用：输出 FINAL: <本子任务结论与必要细节>。',
+        '- 如果仍需要任何额外信息/工具调用/进一步拆分才能完成并交付该子任务：只输出 CALL_JSONS: [...]（不要输出其它文字）。\n' +
+        '- 只有当你确信该子任务已达到可交付状态，且不再需要任何工具/额外步骤：才输出 FINAL: <本子任务结论与必要细节>。\n' +
+        '注意：不要在 CALL_JSONS 或 FINAL 之外输出任何自然语言说明。',
     },
   ]
 }
@@ -233,7 +284,8 @@ async function runAllTasks(ctx, baseMessages, injectedMemoryKeys) {
   }
 }
 
-async function finalizeReport(ctx, baseMessages, taskResults) {
+async function finalizeGate(ctx, baseMessages, taskResults, opts = {}) {
+  const forceFinal = Boolean(opts?.forceFinal)
   const summaryLines = taskResults.map((t, i) => `【子任务 ${i + 1}】${t.title}\n${t.result}`).join('\n\n')
   const finalMessages = [
     ...baseMessages,
@@ -242,24 +294,66 @@ async function finalizeReport(ctx, baseMessages, taskResults) {
       content:
         '用户需求：' +
         String(ctx.userInput || '') +
-        (summaryLines ? '\n\n已完成的子任务结果如下：\n\n' + summaryLines : '\n\n未拆解子任务（历史上下文可能已包含关键结果或无需进一步动作）。') +
-        '\n\n请基于以上结果输出最终答复（自然语言，结构清晰），直接产出“总结性报告”。输出格式：FINAL: <最终答复>。',
+        (summaryLines ? '\n\n已完成的子任务结果如下：\n\n' + summaryLines : '\n\n未拆解子任务或无可用结果。') +
+        (forceFinal
+          ? '\n\n你必须输出最终答复（总结性报告），即使当前信息不完整也要给出最佳努力结论，并明确列出仍缺失的信息/风险点。\n' +
+            '输出格式：FINAL: <最终答复>\n' +
+            '注意：不要输出任何其它文字。'
+          : '\n\n请判断：是否已经完全满足用户需求与可交付标准。\n' +
+            '只能二选一输出：\n' +
+            '- 若已满足：输出 FINAL: <最终答复>\n' +
+            '- 若未满足且需要继续：输出 FOLLOWUP_TASKS: <JSON数组>\n' +
+            '其中 JSON 数组元素格式：{ \"title\": string, \"deliverable\"?: string, \"suggestedSkills\"?: string[], \"dependsOn\"?: number[] }\n' +
+            '注意：不要输出任何其它文字。'),
     },
   ]
   const completion = await createChatReply(ctx.provider, finalMessages, ctx.mcpTools)
   const reply = String(completion?.choices?.[0]?.message?.content || '')
   const usage = typeof ctx.provider?.getLastUsage === 'function' ? ctx.provider.getLastUsage() : null
   if (usage && typeof ctx.emit === 'function') ctx.emit({ type: 'llm_usage', usage, step: ctx.step, timestamp: Date.now() })
-  const finalReply = String(reply || '').replace(/^FINAL:\s*/i, '').trim()
+  if (!forceFinal) {
+    const followups = parseFollowupTasks(reply)
+    if (followups && followups.length) {
+      if (typeof ctx.emit === 'function') ctx.emit({ type: 'finalization_gate', decision: 'followup', tasks: followups, step: ctx.step, timestamp: Date.now() })
+      return { decision: 'followup', tasks: followups }
+    }
+  }
+  const parsedFinal = parseFinalReply(reply)
+  const finalReply = String(parsedFinal || reply || '').replace(/^FINAL:\s*/i, '').trim()
+  if (typeof ctx.emit === 'function') ctx.emit({ type: 'finalization_gate', decision: 'final', step: ctx.step, timestamp: Date.now() })
   const maxTurns = Number(ctx.cfg?.historyMaxTurns) || 12
   appendSessionSegments(ctx.sessionId, [{ role: 'user', content: ctx.userInput }, { role: 'assistant', content: finalReply }], maxTurns)
   if (typeof ctx.emit === 'function') ctx.emit({ type: 'done', reply: finalReply, step: ctx.step })
+  return { decision: 'final', finalReply }
 }
 
 export async function runStream(userInput, sessionId = 'default', emit, selection) {
   const ctx = await buildContext(userInput, sessionId, emit, selection)
   const { baseMessages, injectedMemoryKeys } = await buildBaseMessages(ctx)
-  await planAndInitTasks(ctx, baseMessages)
-  const taskResults = await runAllTasks(ctx, baseMessages, injectedMemoryKeys)
-  await finalizeReport(ctx, baseMessages, taskResults)
+  const maxRounds = Number(ctx.cfg?.maxAgentRounds) || 3
+  const allResults = []
+  let round = 0
+  let pendingFollowups = null
+  while (round < maxRounds) {
+    if (Array.isArray(pendingFollowups) && pendingFollowups.length) {
+      resetTasks()
+      resetToolQueue()
+      const tasks = setTasks(pendingFollowups.map((t, i) => ({ title: t.title, dependsOn: t.dependsOn || [], suggestedSkills: t.suggestedSkills || [], deliverable: t.deliverable || '', status: 'pending', index: i })))
+      if (typeof ctx.emit === 'function') ctx.emit({ type: 'task_list', tasks, planType: 'followup', round: round + 1, timestamp: Date.now() })
+      pendingFollowups = null
+    } else {
+      await planAndInitTasks(ctx, baseMessages)
+    }
+    const batchResults = await runAllTasks(ctx, baseMessages, injectedMemoryKeys)
+    for (const r of batchResults) allResults.push(r)
+    const gate = await finalizeGate(ctx, baseMessages, allResults)
+    ctx.step++
+    if (gate?.decision === 'followup' && Array.isArray(gate.tasks) && gate.tasks.length) {
+      pendingFollowups = gate.tasks
+      round++
+      continue
+    }
+    return
+  }
+  await finalizeGate(ctx, baseMessages, allResults, { forceFinal: true })
 }
