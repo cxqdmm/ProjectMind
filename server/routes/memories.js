@@ -1,7 +1,7 @@
 // 记忆管理路由：创建、更新、废弃文档化记忆
 import { Router } from 'express'
 import { z } from 'zod'
-import { saveMemory, updateMemory, deprecateMemory, loadDocumentedMemories, createMemoryFromSkillData } from '../services/memoryFileService.js'
+import { saveMemory, updateMemory, deprecateMemory, loadDocumentedMemories, createMemoryFromSkillData, loadDocumentedMemoryFiles, readMemoryFile, deleteMemoryFile } from '../services/memoryFileService.js'
 import { loadSkill, loadReference } from '../services/skillsService.js'
 
 const router = Router()
@@ -24,6 +24,30 @@ router.get('/list', async (req, res) => {
   try {
     const memories = loadDocumentedMemories()
     res.json({ memories })
+  } catch (e) {
+    res.status(500).json({ error: String(e?.message || e) })
+  }
+})
+
+router.get('/files', async (req, res) => {
+  try {
+    const includeDeprecated = String(req.query?.includeDeprecated || '') === '1'
+    const memories = loadDocumentedMemoryFiles({ includeDeprecated })
+    res.json({ memories })
+  } catch (e) {
+    res.status(500).json({ error: String(e?.message || e) })
+  }
+})
+
+router.get('/get', async (req, res) => {
+  const id = String(req.query?.id || '')
+  if (!id) {
+    return res.status(400).json({ error: 'memory id required' })
+  }
+  try {
+    const result = readMemoryFile(id)
+    if (!result) return res.status(404).json({ error: 'memory not found' })
+    res.json({ success: true, memory: result.memory, file: result.file, id: result.id })
   } catch (e) {
     res.status(500).json({ error: String(e?.message || e) })
   }
@@ -101,6 +125,22 @@ router.post('/deprecate', async (req, res) => {
       return res.status(404).json({ error: 'memory not found' })
     }
     res.json({ success: true, memory: result.memory })
+  } catch (e) {
+    res.status(500).json({ error: String(e?.message || e) })
+  }
+})
+
+router.post('/delete', async (req, res) => {
+  const id = String(req.body?.id || '')
+  if (!id) {
+    return res.status(400).json({ error: 'memory id required' })
+  }
+  try {
+    const result = deleteMemoryFile(id)
+    if (!result) {
+      return res.status(404).json({ error: 'memory not found' })
+    }
+    res.json({ success: true, id: result.id, file: result.file })
   } catch (e) {
     res.status(500).json({ error: String(e?.message || e) })
   }

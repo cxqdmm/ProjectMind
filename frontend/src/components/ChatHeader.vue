@@ -29,6 +29,13 @@
             </div>
           </div>
         </div>
+        <button class="tool-btn" type="button" @click="$emit('openMemories')" title="记忆">
+          <svg viewBox="0 0 24 24" width="18" height="18" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M6 3h11a2 2 0 0 1 2 2v14H8a2 2 0 0 0-2 2V5a2 2 0 0 1 2-2zm0 18a1 1 0 0 1 1-1h12V5a1 1 0 0 0-1-1H6a1 1 0 0 0-1 1v16z" fill="#111827" />
+            <path d="M8 7h9v2H8V7zm0 4h9v2H8v-2z" fill="#0ea5e9" />
+          </svg>
+          记忆
+        </button>
         <button class="tool-btn" type="button" @click="onModelsToggle" title="模型">
           <svg viewBox="0 0 24 24" width="18" height="18" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
             <path d="M12 3l9 5v8l-9 5-9-5V8l9-5zm0 2.2L6 8l6 3.3L18 8 12 5.2zm7 5.6l-7 3.9-7-3.9v4.4l7 3.9 7-3.9v-4.4z" fill="#111827" />
@@ -73,7 +80,7 @@ const props = defineProps({
   modelsError: { type: String, default: '' },
 })
 
-const emit = defineEmits(['refreshSkills', 'refreshModels', 'chooseModel', 'insertSkill'])
+const emit = defineEmits(['refreshSkills', 'refreshModels', 'chooseModel', 'insertSkill', 'openMemories'])
 
 const skillsOpen = ref(false)
 const modelsOpen = ref(false)
@@ -117,4 +124,3 @@ function onDocClick(ev) {
 onMounted(() => document.addEventListener('click', onDocClick))
 onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 </script>
-

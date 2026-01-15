@@ -12,6 +12,7 @@
       @refreshModels="onModelsRefresh"
       @chooseModel="onChooseModel"
       @insertSkill="onInsertSkill"
+      @openMemories="showMemoryManager = true"
     />
 
     <main class="main">
@@ -19,6 +20,7 @@
       <MessageList ref="messageListRef" :messages="messages" :renderMarkdown="renderMarkdown" :isOpen="isOpen" :toggle="toggleTool" />
       <ChatInput v-model="input" :sending="sending" @send="onSend" />
     </main>
+    <MemoryManager :open="showMemoryManager" @close="showMemoryManager = false" />
   </div>
 </template>
 
@@ -30,6 +32,7 @@ import ChatHeader from './components/ChatHeader.vue'
 import TokenPanel from './components/TokenPanel.vue'
 import ChatInput from './components/ChatInput.vue'
 import MessageList from './components/MessageList.vue'
+import MemoryManager from './components/MemoryManager.vue'
 import { useOpenState } from './composables/useOpenState.js'
 import { useSkills } from './composables/useSkills.js'
 import { useModels } from './composables/useModels.js'
@@ -39,6 +42,7 @@ import { useAgentStream } from './composables/useAgentStream.js'
 const input = ref('')
 const messageListRef = ref(null)
 const sessionId = ref(localStorage.getItem('pm_session_id') || '')
+const showMemoryManager = ref(false)
 const { isOpen, toggle: toggleOpen } = useOpenState()
 const { skills, loading: skillsLoading, error: skillsError, refresh: onSkillsRefresh } = useSkills()
 const { models, loading: modelsLoading, error: modelsError, selectedModel, currentLabel: currentModelLabel, refresh: onModelsRefresh, choose: onChooseModel } = useModels()

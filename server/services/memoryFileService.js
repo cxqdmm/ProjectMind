@@ -118,6 +118,68 @@ export function loadDocumentedMemories() {
   return memories
 }
 
+function validateMemoryFileId(id) {
+  const s = String(id || '').trim()
+  if (!s) return null
+  if (!s.endsWith('.json')) return null
+  if (s.startsWith('.')) return null
+  if (s.includes('..')) return null
+  if (s.includes('/') || s.includes('\\')) return null
+  return s
+}
+
+export function loadDocumentedMemoryFiles(opts = {}) {
+  ensureDir()
+  const includeDeprecated = Boolean(opts?.includeDeprecated)
+  const out = []
+  try {
+    const files = fs.readdirSync(memoriesDir)
+    for (const file of files) {
+      if (!file.endsWith('.json') || file.startsWith('.')) continue
+      const filePath = path.join(memoriesDir, file)
+      try {
+        const txt = readFileSafe(filePath)
+        if (!txt) continue
+        const mem = JSON.parse(txt)
+        if (!validateMemorySchema(mem)) continue
+        if (!includeDeprecated && mem.deprecated) continue
+        out.push({ id: file, file, memory: normalizeMemory(mem) })
+      } catch {}
+    }
+  } catch {}
+  return out
+}
+
+export function readMemoryFile(id) {
+  ensureDir()
+  const file = validateMemoryFileId(id)
+  if (!file) return null
+  const filePath = path.join(memoriesDir, file)
+  try {
+    const txt = readFileSafe(filePath)
+    if (!txt) return null
+    const mem = JSON.parse(txt)
+    if (!validateMemorySchema(mem)) return null
+    return { id: file, file, path: filePath, memory: normalizeMemory(mem) }
+  } catch {
+    return null
+  }
+}
+
+export function deleteMemoryFile(id) {
+  ensureDir()
+  const file = validateMemoryFileId(id)
+  if (!file) return null
+  const filePath = path.join(memoriesDir, file)
+  try {
+    if (!fs.existsSync(filePath)) return null
+    fs.unlinkSync(filePath)
+    return { id: file, file }
+  } catch {
+    return null
+  }
+}
+
 export function saveMemory(memory) {
   ensureDir()
   const normalized = normalizeMemory(memory)
