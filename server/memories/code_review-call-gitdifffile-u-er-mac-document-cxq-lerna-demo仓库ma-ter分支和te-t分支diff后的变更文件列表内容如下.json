@@ -1,0 +1,18 @@
+{
+  "toolName": "call",
+  "type": "call",
+  "content": "{\n  \"files\": [\n    {\n      \"filename\": \"packages/vue-pc/src/views/list/List.vue\",\n      \"status\": \"modified\",\n      \"statusCode\": \"M\",\n      \"additions\": 53,\n      \"deletions\": 242,\n      \"changes\": 295\n    },\n    {\n      \"filename\": \"packages/vue-pc/src/views/list/service.ts\",\n      \"status\": \"added\",\n      \"statusCode\": \"A\",\n      \"additions\": 75,\n      \"deletions\": 0,\n      \"changes\": 75\n    },\n    {\n      \"filename\": \"packages/vue-pc/src/views/list/useList.ts\",\n      \"status\": \"added\",\n      \"statusCode\": \"A\",\n      \"additions\": 100,\n      \"deletions\": 0,\n      \"changes\": 100\n    },\n    {\n      \"filename\": \"packages/vue-pc/src/views/pageManager/list/api.ts\",\n      \"status\": \"modified\",\n      \"statusCode\": \"M\",\n      \"additions\": 26,\n      \"deletions\": 8,\n      \"changes\": 34\n    },\n    {\n      \"filename\": \"packages/vue-pc/src/views/pageManager/list/components/search.vue\",\n      \"status\": \"modified\",\n      \"statusCode\": \"M\",\n      \"additions\": 5,\n      \"deletions\": 0,\n      \"changes\": 5\n    },\n    {\n      \"filename\": \"packages/vue-pc/src/views/pageManager/list/components/table.vue\",\n      \"status\": \"modified\",\n      \"statusCode\": \"M\",\n      \"additions\": 5,\n      \"deletions\": 1,\n      \"changes\": 6\n    },\n    {\n      \"filename\": \"packages/vue-pc/src/views/pageManager/list/store.ts\",\n      \"status\": \"modified\",\n      \"statusCode\": \"M\",\n      \"additions\": 6,\n      \"deletions\": 6,\n      \"changes\": 12\n    },\n    {\n      \"filename\": \"packages/vue-pc/src/views/pageManager/pageConfig/api.ts\",\n      \"status\": \"modified\",\n      \"statusCode\": \"M\",\n      \"additions\": 13,\n      \"deletions\": 11,\n      \"changes\": 24\n    },\n    {\n      \"filename\": \"packages/vue-pc/src/views/pageManager/templateReview/page.vue\",\n      \"status\": \"modified\",\n      \"statusCode\": \"M\",\n      \"additions\": 2,\n      \"deletions\": 1,\n      \"changes\": 3\n    }\n  ],\n  \"totalChanges\": 9,\n  \"totalAdditions\": 285,\n  \"totalDeletions\": 269,\n  \"summary\": {\n    \"modified\": 7,\n    \"added\": 2,\n    \"deleted\": 0,\n    \"renamed\": 0\n  },\n  \"desc\": \"/Users/mac/Documents/cxq/lerna-demo 仓库 master 分支和 test 分支 diff 后的变更文件列表内容如下：\"\n}",
+  "snippet": "/Users/mac/Documents/cxq/lerna-demo 仓库 master 分支和 test 分支 diff 后的变更文件列表内容如下：",
+  "skill": "code_review",
+  "skillDescription": "",
+  "script": "scripts/gitdifffiles.js",
+  "createdAt": 1768464544290,
+  "updatedAt": 1768464544290,
+  "meta": {
+    "name": "",
+    "description": "",
+    "type": "object",
+    "desc": "/Users/mac/Documents/cxq/lerna-demo 仓库 master 分支和 test 分支 diff 后的变更文件列表内容如下："
+  },
+  "deprecated": false
+}

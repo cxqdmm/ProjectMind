@@ -264,8 +264,8 @@ async function runSingleTask(ctx, baseMessages, injectedMemoryKeys, taskResults,
   ctx.taskCtx = { id: inProg.id, index: inProg.index, title: inProg.title }
   const depTexts = buildDepTexts(taskResults, inProg)
   const memQuery = buildTaskQuery(ctx.userInput, inProg, depTexts)
-  const { taskResultMessages, taskMemoryMessages } = await selectTaskMemoryMessages(ctx, injectedMemoryKeys, memQuery, ctx.taskCtx)
-  const messages = buildTaskMessages(baseMessages, taskResultMessages, taskMemoryMessages, ctx.userInput, inProg?.title, depTexts)
+  const { taskMemoryMessages } = await selectTaskMemoryMessages(ctx, injectedMemoryKeys, memQuery, ctx.taskCtx)
+  const messages = buildTaskMessages(baseMessages, taskMemoryMessages, ctx.userInput, inProg?.title, depTexts)
   const final = await runTaskToolLoop(ctx, messages)
   const doneTask = updateTask(nextTask.id, { status: 'completed', result: final })
   if (typeof ctx.emit === 'function') ctx.emit({ type: 'task_update', task: doneTask })
