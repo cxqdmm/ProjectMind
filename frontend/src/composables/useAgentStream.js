@@ -153,6 +153,60 @@ function upsertToolUpdatePart(contentParts, update) {
   return list
 }
 
+function upsertTaskToolCall(toolEvents, call, timestamp) {
+  const list = Array.isArray(toolEvents) ? toolEvents : []
+  const id = String(call?.id || '')
+  if (!id) return list
+  for (let i = list.length - 1; i >= 0; i--) {
+    const it = list[i]
+    if (it && String(it.id || '') === id) {
+      list[i] = { ...it, ...call, id, timestamp: Number(timestamp || it.timestamp || Date.now()) }
+      return list
+    }
+  }
+  list.push({ ...call, id, timestamp: Number(timestamp || Date.now()) })
+  return list
+}
+
+function applyToolUpdateToTaskToolEvents(toolEvents, update) {
+  const list = Array.isArray(toolEvents) ? toolEvents : []
+  const id = String(update?.id || '')
+  if (!id) return list
+  for (let i = list.length - 1; i >= 0; i--) {
+    const it = list[i]
+    if (it && String(it.id || '') === id) {
+      list[i] = {
+        ...it,
+        status: update.status ?? it.status,
+        result: update.result ?? it.result,
+        error: update.error ?? it.error,
+        startedAt: update.startedAt ?? it.startedAt,
+        completedAt: update.completedAt ?? it.completedAt,
+        durationMs: update.durationMs ?? it.durationMs,
+        timestamp: Number(update.timestamp || it.timestamp || Date.now()),
+      }
+      return list
+    }
+  }
+  list.push({
+    id,
+    provider: '',
+    tool: '',
+    toolName: '',
+    name: '',
+    input: null,
+    inputPreview: null,
+    status: update.status ?? 'pending',
+    result: update.result ?? null,
+    error: update.error ?? null,
+    startedAt: update.startedAt ?? null,
+    completedAt: update.completedAt ?? null,
+    durationMs: update.durationMs ?? null,
+    timestamp: Number(update.timestamp || Date.now()),
+  })
+  return list
+}
+
 export function useAgentStream(opts = {}) {
   const baseUrl = String(opts.baseUrl || 'http://localhost:3334').replace(/\/$/, '')
   const messages = ref([])
@@ -222,7 +276,9 @@ export function useAgentStream(opts = {}) {
               const t = ensureTaskInMessage(messages, idx, data.task)
               if (t) {
                 t.toolEvents = Array.isArray(t.toolEvents) ? t.toolEvents : []
-                t.toolEvents.push({ messageType: 'tool_calls', calls: data.calls || [], timestamp: Date.now() })
+                const calls = Array.isArray(data.calls) ? data.calls : []
+                const ts = Date.now()
+                for (const c of calls) upsertTaskToolCall(t.toolEvents, c, ts)
               }
             } else {
               const arr = Array.isArray(messages.value[idx].content) ? messages.value[idx].content : []
@@ -234,7 +290,7 @@ export function useAgentStream(opts = {}) {
               const t = ensureTaskInMessage(messages, idx, data.task)
               if (t) {
                 t.toolEvents = Array.isArray(t.toolEvents) ? t.toolEvents : []
-                upsertToolUpdateEvent(t.toolEvents, { id: data.id, status: data.status, result: data.result, error: data.error, startedAt: data.startedAt, completedAt: data.completedAt, durationMs: data.durationMs, timestamp: Date.now() })
+                applyToolUpdateToTaskToolEvents(t.toolEvents, { id: data.id, status: data.status, result: data.result, error: data.error, startedAt: data.startedAt, completedAt: data.completedAt, durationMs: data.durationMs, timestamp: Date.now() })
               }
             } else {
               const arr = Array.isArray(messages.value[idx].content) ? messages.value[idx].content : []
@@ -264,7 +320,9 @@ export function useAgentStream(opts = {}) {
           } else if (data.type === 'task_update') {
             ensureTasksPart(messages, idx)
             upsertTaskIntoMessage(messages, idx, data.task)
-          } else if (data.type === 'done') {
+          }
+
+          if (data.type === 'assistant') {
             const arr = Array.isArray(messages.value[idx].content) ? messages.value[idx].content : []
             if (typeof data.reply === 'string') arr.push({ type: 'text', text: String(data.reply) })
             messages.value[idx].content = arr

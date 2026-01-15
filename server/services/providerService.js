@@ -55,7 +55,6 @@ export function createProvider(config, selection) {
     
     const r = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) })
     if (!r.ok) { 
-      debugger
       throw new Error('chat completion failed')
     }
 

@@ -47,7 +47,10 @@ const props = defineProps({
 const batches = computed(() => {
   if (props.message && props.part) return buildBatchForItem(props.message, props.part)
   const evs = Array.isArray(props.events) ? props.events : []
+  if (evs.length > 0 && evs[0] && typeof evs[0] === 'object' && 'id' in evs[0] && !('messageType' in evs[0])) {
+    const calls = [...evs].sort((a, b) => Number(a?.createdAt || a?.startedAt || a?.timestamp || 0) - Number(b?.createdAt || b?.startedAt || b?.timestamp || 0))
+    return [{ calls }]
+  }
   return buildToolView(evs)
 })
 </script>
-
