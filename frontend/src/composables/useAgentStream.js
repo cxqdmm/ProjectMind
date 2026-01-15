@@ -322,7 +322,7 @@ export function useAgentStream(opts = {}) {
             upsertTaskIntoMessage(messages, idx, data.task)
           }
 
-          if (data.type === 'assistant') {
+          if (data.type === 'done' || (data.type === 'assistant' && typeof data.reply === 'string')) {
             const arr = Array.isArray(messages.value[idx].content) ? messages.value[idx].content : []
             if (typeof data.reply === 'string') arr.push({ type: 'text', text: String(data.reply) })
             messages.value[idx].content = arr
