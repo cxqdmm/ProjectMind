@@ -16,13 +16,13 @@
         <div class="task-body" v-show="isTaskOpen(t)">
           <div v-if="Array.isArray(t.toolEvents) && t.toolEvents.length" class="task-sub">
             <div class="task-subhead">工具</div>
-            <ToolTimeline class="task-tools" :events="t.toolEvents" :isOpen="(id) => isToolOpen(t, id)" :toggle="(id) => toggleTool(t, id)" />
+            <ToolTimeline class="task-tools" :events="t.toolEvents" :isOpen="(id) => isToolOpen(t, id)" :toggle="(id) => toggleTool(t, id)" :renderMarkdown="renderMarkdown" />
           </div>
           <div v-if="Array.isArray(t.memories) && t.memories.length" class="task-sub">
             <div class="task-subhead">记忆</div>
             <MemoryUsedList :memories="t.memories" />
           </div>
-          <pre v-if="t.result" class="task-result">{{ t.result }}</pre>
+          <div v-if="t.result" class="task-result md" v-html="renderMarkdown(t.result)"></div>
           <pre v-else-if="t.status === 'failed'" class="task-result">{{ t.error || '执行失败' }}</pre>
           <div v-else class="task-result-empty">暂无结果</div>
         </div>
@@ -40,6 +40,7 @@ const props = defineProps({
   messageIndex: { type: Number, required: true },
   isOpen: { type: Function, required: true },
   toggle: { type: Function, required: true },
+  renderMarkdown: { type: Function, required: true },
 })
 
 function taskKey(t) {

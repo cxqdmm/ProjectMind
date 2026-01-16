@@ -42,6 +42,7 @@ const props = defineProps({
   part: { type: Object, default: null },
   isOpen: { type: Function, required: true },
   toggle: { type: Function, required: true },
+  renderMarkdown: { type: Function, required: true },
 })
 
 const batches = computed(() => {

@@ -155,6 +155,7 @@ async function execSingleToolCall(ctx, messages, call) {
   const t0 = Date.now()
   try {
     let toolResult = null
+    emitLog(ctx.emit, '开始执行工具调用', { tool: call.tool, input: call.input })
     if (call.provider === 'mcp') {
       toolResult = await callMcpTool(call.tool, call.input)
       if (typeof toolResult !== 'string') toolResult = JSON.stringify(toolResult)
@@ -278,7 +279,9 @@ async function runSingleTask(ctx, baseMessages, injectedMemoryKeys, taskResults,
   const depTexts = buildDepTexts(taskResults, inProg)
   const memQuery = buildTaskQuery(ctx.userInput, inProg, depTexts)
   const { taskMemoryMessages } = await selectTaskMemoryMessages(ctx, injectedMemoryKeys, memQuery, ctx.taskCtx)
+  emitLog(ctx.emit, '任务记忆获取', { task: ctx.taskCtx, query: memQuery })
   const messages = buildTaskMessages(baseMessages, taskMemoryMessages, ctx.userInput, inProg?.title, depTexts)
+  emitLog(ctx.emit, '任务执行开始', { task: ctx.taskCtx, query: messages })
   const final = await runTaskToolLoop(ctx, messages)
   const doneTask = updateTask(nextTask.id, { status: 'completed', result: final })
   if (typeof ctx.emit === 'function') ctx.emit({ type: 'task_update', task: doneTask })
@@ -355,11 +358,15 @@ export async function runStream(userInput, sessionId = 'default', emit, selectio
       if (typeof ctx.emit === 'function') ctx.emit({ type: 'task_list', tasks, planType: 'followup', round: round + 1, timestamp: Date.now() })
       pendingFollowups = null
     } else {
+      emitLog(ctx.emit, '任务计划开始', { task: ctx.taskCtx, round: round + 1 })
       await planAndInitTasks(ctx, baseMessages)
+      emitLog(ctx.emit, '任务计划完成', { task: ctx.taskCtx, round: round + 1 })
     }
     const batchResults = await runAllTasks(ctx, baseMessages, injectedMemoryKeys)
     for (const r of batchResults) allResults.push(r)
+    emitLog(ctx.emit, '所有任务执行完成', { task: ctx.taskCtx, round: round + 1, results: batchResults })
     const gate = await finalizeGate(ctx, baseMessages, allResults)
+    emitLog(ctx.emit, '所有任务最终化决策', { task: ctx.taskCtx, round: round + 1, decision: gate.decision, followups: gate.tasks })
     ctx.step++
     if (gate?.decision === 'followup' && Array.isArray(gate.tasks) && gate.tasks.length) {
       pendingFollowups = gate.tasks
