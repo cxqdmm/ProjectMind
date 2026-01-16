@@ -210,6 +210,7 @@ function applyToolUpdateToTaskToolEvents(toolEvents, update) {
 export function useAgentStream(opts = {}) {
   const baseUrl = String(opts.baseUrl || 'http://localhost:3334').replace(/\/$/, '')
   const messages = ref([])
+  const logs = ref([])
   const sending = ref(false)
   const tokenVisible = ref(false)
   const tokenLast = ref({ promptTokens: 0, completionTokens: 0, totalTokens: 0, estimated: false })
@@ -320,6 +321,10 @@ export function useAgentStream(opts = {}) {
           } else if (data.type === 'task_update') {
             ensureTasksPart(messages, idx)
             upsertTaskIntoMessage(messages, idx, data.task)
+          } else if (data.type === 'debug_log') {
+            if (data.log) {
+              logs.value.push(data.log)
+            }
           }
 
           if (data.type === 'done' || (data.type === 'assistant' && typeof data.reply === 'string')) {
@@ -346,5 +351,5 @@ export function useAgentStream(opts = {}) {
     }
   }
 
-  return { messages, sending, tokenVisible, tokenLast, tokenTotal, send, addMessage }
+  return { messages, logs, sending, tokenVisible, tokenLast, tokenTotal, send, addMessage }
 }

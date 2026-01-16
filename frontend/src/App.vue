@@ -17,6 +17,7 @@
 
     <main class="main">
       <TokenPanel :visible="tokenVisible" :tokenLast="tokenLast" :tokenTotal="tokenTotal" />
+      <DebugLog :logs="logs" />
       <MessageList ref="messageListRef" :messages="messages" :renderMarkdown="renderMarkdown" :isOpen="isOpen" :toggle="toggleTool" />
       <ChatInput v-model="input" :sending="sending" @send="onSend" />
     </main>
@@ -37,6 +38,7 @@ import { useOpenState } from './composables/useOpenState.js'
 import { useSkills } from './composables/useSkills.js'
 import { useModels } from './composables/useModels.js'
 import { useAgentStream } from './composables/useAgentStream.js'
+import DebugLog from './components/DebugLog.vue'
  
  
 const input = ref('')
@@ -46,7 +48,7 @@ const showMemoryManager = ref(false)
 const { isOpen, toggle: toggleOpen } = useOpenState()
 const { skills, loading: skillsLoading, error: skillsError, refresh: onSkillsRefresh } = useSkills()
 const { models, loading: modelsLoading, error: modelsError, selectedModel, currentLabel: currentModelLabel, refresh: onModelsRefresh, choose: onChooseModel } = useModels()
-const { messages, sending, tokenVisible, tokenLast, tokenTotal, send, addMessage } = useAgentStream()
+const { messages, logs, sending, tokenVisible, tokenLast, tokenTotal, send, addMessage } = useAgentStream()
 
 function scrollToBottom() {
   nextTick(() => {

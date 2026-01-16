@@ -11,8 +11,23 @@ import { resetToolQueue, enqueueToolCalls, getNextPendingToolCall, markToolCallS
 
 import { initMcpClients, getMcpTools, callMcpTool } from './mcpService.js'
 
-async function createChatReply(provider, messages, tools) {
+function emitLog(emit, title, content) {
+  if (typeof emit === 'function') {
+    emit({
+      type: 'debug_log',
+      log: {
+        title,
+        content,
+        timestamp: Date.now(),
+      },
+    })
+  }
+}
+
+async function createChatReply(provider, messages, tools, emit) {
+  emitLog(emit, '模型调用开始', { messages, tools })
   const content = await provider.chat(messages, tools)
+  emitLog(emit, '模型调用完成', { content })
   return { choices: [{ message: { content } }] }
 }
 
@@ -151,6 +166,7 @@ async function execSingleToolCall(ctx, messages, call) {
     if (done && typeof ctx.emit === 'function') {
       ctx.emit({ type: 'tool_update', id: done.id, status: 'completed', result: toolResult, startedAt: done.startedAt, completedAt: done.completedAt, durationMs: done.durationMs ?? (Date.now() - t0), timestamp: Date.now(), task: ctx.taskCtx })
     }
+    emitLog(ctx.emit, '工具执行完成', { tool: call.tool, result: toolResult })
     appendOpenMsgsToConversation(messages, buildOpenMsgs(call, toolResult, null))
   } catch (e) {
     const errorMsg = String(e?.message || e)
@@ -173,7 +189,9 @@ async function drainToolQueue(ctx, messages) {
 async function planAndInitTasks(ctx, baseMessages) {
   resetTasks()
   resetToolQueue()
+  emitLog(ctx.emit, '开始规划任务', { userInput: ctx.userInput })
   const planned = await planTasksWithProvider(ctx.provider, ctx.userInput, baseMessages)
+  emitLog(ctx.emit, '任务规划完成', { tasks: planned })
   const tasks = setTasks(planned.map((t, i) => ({ title: t?.title, dependsOn: t?.dependsOn || [], deliverable: t?.deliverable || '', status: 'pending', index: i })))
   if (typeof ctx.emit === 'function') ctx.emit({ type: 'task_list', tasks })
   return tasks
@@ -264,6 +282,7 @@ async function runSingleTask(ctx, baseMessages, injectedMemoryKeys, taskResults,
   const final = await runTaskToolLoop(ctx, messages)
   const doneTask = updateTask(nextTask.id, { status: 'completed', result: final })
   if (typeof ctx.emit === 'function') ctx.emit({ type: 'task_update', task: doneTask })
+  emitLog(ctx.emit, '任务执行完成', { task: ctx.taskCtx, result: final })
   ctx.step++
   return { title: nextTask.title, result: final }
 }
@@ -301,7 +320,7 @@ async function finalizeGate(ctx, baseMessages, taskResults, opts = {}) {
             '注意：不要输出任何其它文字。'),
     },
   ]
-  const completion = await createChatReply(ctx.provider, finalMessages, ctx.mcpTools)
+  const completion = await createChatReply(ctx.provider, finalMessages, ctx.mcpTools, ctx.emit)
   const reply = String(completion?.choices?.[0]?.message?.content || '')
   const usage = typeof ctx.provider?.getLastUsage === 'function' ? ctx.provider.getLastUsage() : null
   if (usage && typeof ctx.emit === 'function') ctx.emit({ type: 'llm_usage', usage, step: ctx.step, timestamp: Date.now() })
