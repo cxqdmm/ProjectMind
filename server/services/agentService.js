@@ -52,7 +52,6 @@ function parseFollowupTasks(reply) {
     out.push({
       title,
       deliverable: String(t.deliverable || '').trim(),
-      suggestedSkills: Array.isArray(t.suggestedSkills) ? t.suggestedSkills.map((x) => String(x || '').trim()).filter(Boolean) : [],
       dependsOn: Array.isArray(t.dependsOn) ? t.dependsOn.map((x) => Number(x)).filter((n) => Number.isFinite(n)) : [],
     })
   }
@@ -174,8 +173,8 @@ async function drainToolQueue(ctx, messages) {
 async function planAndInitTasks(ctx, baseMessages) {
   resetTasks()
   resetToolQueue()
-  const planned = await planTasksWithProvider(ctx.provider, ctx.userInput, baseMessages, 6)
-  const tasks = setTasks(planned.map((t, i) => ({ title: t?.title, dependsOn: t?.dependsOn || [], suggestedSkills: t?.suggestedSkills || [], deliverable: t?.deliverable || '', status: 'pending', index: i })))
+  const planned = await planTasksWithProvider(ctx.provider, ctx.userInput, baseMessages)
+  const tasks = setTasks(planned.map((t, i) => ({ title: t?.title, dependsOn: t?.dependsOn || [], deliverable: t?.deliverable || '', status: 'pending', index: i })))
   if (typeof ctx.emit === 'function') ctx.emit({ type: 'task_list', tasks })
   return tasks
 }
@@ -197,7 +196,6 @@ function buildTaskQuery(userInput, task, depTexts) {
     `用户需求：${String(userInput || '')}`,
     `当前子任务：${String(task?.title || '')}`,
     String(task?.deliverable || '').trim() ? `预期产物：${String(task.deliverable || '')}` : '',
-    Array.isArray(task?.suggestedSkills) && task.suggestedSkills.length ? `可能涉及技能：${task.suggestedSkills.map((s) => String(s)).filter(Boolean).join(', ')}` : '',
     depTexts ? `依赖结果：\n${depTexts}` : '',
   ]
   return parts.filter(Boolean).join('\n\n')
@@ -269,7 +267,7 @@ async function runSingleTask(ctx, baseMessages, injectedMemoryKeys, taskResults,
   const final = await runTaskToolLoop(ctx, messages)
   const doneTask = updateTask(nextTask.id, { status: 'completed', result: final })
   if (typeof ctx.emit === 'function') ctx.emit({ type: 'task_update', task: doneTask })
-  appendTaskResultMemory(doneTask, final, { dependsOn: doneTask.dependsOn || [], suggestedSkills: doneTask.suggestedSkills || [] })
+  appendTaskResultMemory(doneTask, final, { dependsOn: doneTask.dependsOn || [] })
   ctx.step++
   return { title: nextTask.title, result: final }
 }
@@ -303,7 +301,7 @@ async function finalizeGate(ctx, baseMessages, taskResults, opts = {}) {
             '只能二选一输出：\n' +
             '- 若已满足：输出 FINAL: <最终答复>\n' +
             '- 若未满足且需要继续：输出 FOLLOWUP_TASKS: <JSON数组>\n' +
-            '其中 JSON 数组元素格式：{ \"title\": string, \"deliverable\"?: string, \"suggestedSkills\"?: string[], \"dependsOn\"?: number[] }\n' +
+            '其中 JSON 数组元素格式：{ \"title\": string, \"deliverable\"?: string, \"dependsOn\"?: number[] }\n' +
             '注意：不要输出任何其它文字。'),
     },
   ]
@@ -338,7 +336,7 @@ export async function runStream(userInput, sessionId = 'default', emit, selectio
     if (Array.isArray(pendingFollowups) && pendingFollowups.length) {
       resetTasks()
       resetToolQueue()
-      const tasks = setTasks(pendingFollowups.map((t, i) => ({ title: t.title, dependsOn: t.dependsOn || [], suggestedSkills: t.suggestedSkills || [], deliverable: t.deliverable || '', status: 'pending', index: i })))
+      const tasks = setTasks(pendingFollowups.map((t, i) => ({ title: t.title, dependsOn: t.dependsOn || [], deliverable: t.deliverable || '', status: 'pending', index: i })))
       if (typeof ctx.emit === 'function') ctx.emit({ type: 'task_list', tasks, planType: 'followup', round: round + 1, timestamp: Date.now() })
       pendingFollowups = null
     } else {
