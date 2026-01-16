@@ -4,7 +4,7 @@ import { createProvider } from './providerService.js'
 import { parseToolCalls } from './toolParseService.js'
 import { invoke as invokeTool } from './toolInvokeService.js'
 import { readAgentsPrompt } from './promptService.js'
-import { selectSkillMemoriesForQuestion, selectTaskResultMemoriesForQuestion, buildMemoryMessages, buildTaskResultMessages, buildMemoryEventPayload, appendSkillMemories, appendTaskResultMemory } from './memoryService.js'
+import { selectSkillMemoriesForQuestion, buildMemoryMessages, buildMemoryEventPayload, appendSkillMemories } from './memoryService.js'
 import { getSessionHistory, appendSessionSegments } from './historyService.js'
 import { resetTasks, setTasks, getNextTask, updateTask, planTasksWithProvider } from './taskService.js'
 import { resetToolQueue, enqueueToolCalls, getNextPendingToolCall, markToolCallStarted, markToolCallCompleted, markToolCallFailed } from './toolQueueService.js'
@@ -202,8 +202,6 @@ function buildTaskQuery(userInput, task, depTexts) {
 }
 
 async function selectTaskMemoryMessages(ctx, injectedMemoryKeys, memQuery, taskCtx) {
-  const { selected: selectedTaskResults } = await selectTaskResultMemoriesForQuestion(ctx.provider, [memQuery], 2)
-  const taskResultMessages = buildTaskResultMessages(selectedTaskResults)
   const { selected: taskSelectedMemories } = await selectSkillMemoriesForQuestion(ctx.provider, [memQuery], 5)
   const toInject = (Array.isArray(taskSelectedMemories) ? taskSelectedMemories : []).filter((m) => {
     const k = String(m?.key || '')
@@ -213,13 +211,12 @@ async function selectTaskMemoryMessages(ctx, injectedMemoryKeys, memQuery, taskC
     for (const m of toInject) injectedMemoryKeys.add(String(m.key || ''))
     if (typeof ctx.emit === 'function') ctx.emit({ type: 'memory_used', memories: buildMemoryEventPayload(toInject), task: taskCtx })
   }
-  return { taskResultMessages, taskMemoryMessages: buildMemoryMessages(toInject) }
+  return { taskMemoryMessages: buildMemoryMessages(toInject) }
 }
 
-function buildTaskMessages(baseMessages, taskResultMessages, taskMemoryMessages, userInput, taskTitle, depTexts) {
+function buildTaskMessages(baseMessages, taskMemoryMessages, userInput, taskTitle, depTexts) {
   return [
     ...baseMessages,
-    ...taskResultMessages,
     ...taskMemoryMessages,
     {
       role: 'user',
@@ -230,7 +227,7 @@ function buildTaskMessages(baseMessages, taskResultMessages, taskMemoryMessages,
         String(taskTitle || '') +
         (depTexts ? `\n\n依赖子任务结果：\n${depTexts}` : '') +
         '\n\n请完成该子任务，并严格按以下格式输出（只能二选一）：\n' +
-        '- 如果仍需要任何额外信息/工具调用/进一步拆分才能完成并交付该子任务：只输出 CALL_JSONS: [...]（不要输出其它文字）。\n' +
+        '- 如果仍需要任何【额外信息】/【工具调用】才能完成并交付该子任务：只输出 CALL_JSONS: [...]（不要输出其它文字）。\n' +
         '- 只有当你确信该子任务已达到可交付状态，且不再需要任何工具/额外步骤：才输出 FINAL: <本子任务结论与必要细节>。\n' +
         '注意：不要在 CALL_JSONS 或 FINAL 之外输出任何自然语言说明。',
     },
@@ -267,7 +264,6 @@ async function runSingleTask(ctx, baseMessages, injectedMemoryKeys, taskResults,
   const final = await runTaskToolLoop(ctx, messages)
   const doneTask = updateTask(nextTask.id, { status: 'completed', result: final })
   if (typeof ctx.emit === 'function') ctx.emit({ type: 'task_update', task: doneTask })
-  appendTaskResultMemory(doneTask, final, { dependsOn: doneTask.dependsOn || [] })
   ctx.step++
   return { title: nextTask.title, result: final }
 }
@@ -294,7 +290,7 @@ async function finalizeGate(ctx, baseMessages, taskResults, opts = {}) {
         String(ctx.userInput || '') +
         (summaryLines ? '\n\n已完成的子任务结果如下：\n\n' + summaryLines : '\n\n未拆解子任务或无可用结果。') +
         (forceFinal
-          ? '\n\n你必须输出最终答复（总结性报告），即使当前信息不完整也要给出最佳努力结论，并明确列出仍缺失的信息/风险点。\n' +
+          ? '\n\n输出最终答复\n' +
             '输出格式：FINAL: <最终答复>\n' +
             '注意：不要输出任何其它文字。'
           : '\n\n请判断：是否已经完全满足用户需求与可交付标准。\n' +

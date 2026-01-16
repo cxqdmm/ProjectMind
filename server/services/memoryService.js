@@ -3,7 +3,6 @@
 import { loadDocumentedMemories, createMemoryFromSkillData, saveMemory } from './memoryFileService.js'
 
 const memoryStore = []
-const taskResultStore = []
 let documentedMemoriesCache = null
 
 function safeStringify(val) {
@@ -96,31 +95,6 @@ export function appendSkillMemories(messages, maxPerSession = 200) {
   memoryStore.length = 0
   memoryStore.push(...trimmed)
   return { all: trimmed, added }
-}
-
-export function appendTaskResultMemory(task, result, meta = {}) {
-  const now = Date.now()
-  const title = String(task?.title || '').trim() || `子任务 ${Number(task?.index) + 1 || ''}`.trim()
-  const content = String(result || '')
-  const snippet = content.split('\n').find((l) => String(l || '').trim())?.trim() || content.slice(0, 120)
-  taskResultStore.push({
-    kind: 'task_result',
-    index: Number.isFinite(Number(task?.index)) ? Number(task.index) : taskResultStore.length,
-    title,
-    snippet: snippet.slice(0, 180),
-    content,
-    meta: meta && typeof meta === 'object' ? meta : {},
-    createdAt: now,
-    updatedAt: now,
-  })
-  if (taskResultStore.length > 200) {
-    taskResultStore.splice(0, taskResultStore.length - 200)
-  }
-  return taskResultStore[taskResultStore.length - 1]
-}
-
-export function getTaskResultMemories() {
-  return taskResultStore.slice()
 }
 
 function buildTaskSelectorMessages(userInputs, tasks) {

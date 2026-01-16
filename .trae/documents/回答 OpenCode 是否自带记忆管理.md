@@ -62,8 +62,6 @@
 
   * dependsOn（依赖哪些子任务）
 
-  * suggestedSkills（可能用到哪些技能）
-
   * deliverable（期望产物：例如文件列表/diff/最终建议）
 
 * 这样“关联判断”大部分可以不用再猜。
