@@ -283,30 +283,24 @@ function parseSelectedIds(rawText) {
   return []
 }
 
-export async function selectSkillMemoriesForQuestion(provider, userInputs, limit = 5) {
+export async function selectSkillMemoriesForQuestion(provider, userInputs) {
   const all = getSkillMemories()
   if (all.length === 0) {
     return { selected: [], all }
   }
-  const base = all.slice(-Math.max(1, limit * 2)) // 最近的一批作为候选
-  // 如果没有 provider 或 FAKE_LLM 模式下不希望额外请求，可以简单返回最近几条
-  if (!provider || typeof provider.chat !== 'function') {
-    const fallback = base.slice(-limit)
-    return { selected: fallback, all }
-  }
+  
   try {
-    const messages = buildSelectorMessages(userInputs, base)
+    const messages = buildSelectorMessages(userInputs, all)
     const raw = await provider.chat(messages)
     const idxs = parseSelectedIds(raw)
-    const picked = base.filter((_, idx) => idxs.includes(idx))
+    const picked = all.filter((_, idx) => idxs.includes(idx))
     if (picked.length > 0) {
       return { selected: picked, all }
     } else {
       return { selected: [], all }
     }
   } catch {
-    const fallback = base.slice(-limit)
-    return { selected: fallback, all }
+    return { selected: [], all }
   }
 }
 

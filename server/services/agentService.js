@@ -279,7 +279,7 @@ async function runSingleTask(ctx, baseMessages, injectedMemoryKeys, taskResults,
   const depTexts = buildDepTexts(taskResults, inProg)
   const memQuery = buildTaskQuery(ctx.userInput, inProg, depTexts)
   const { taskMemoryMessages } = await selectTaskMemoryMessages(ctx, injectedMemoryKeys, memQuery, ctx.taskCtx)
-  emitLog(ctx.emit, '任务记忆获取', { task: ctx.taskCtx, query: memQuery })
+  emitLog(ctx.emit, '任务记忆获取', { task: ctx.taskCtx, query: memQuery, result: taskMemoryMessages })
   const messages = buildTaskMessages(baseMessages, taskMemoryMessages, ctx.userInput, inProg?.title, depTexts)
   emitLog(ctx.emit, '任务执行开始', { task: ctx.taskCtx, query: messages })
   const final = await runTaskToolLoop(ctx, messages)
@@ -358,9 +358,7 @@ export async function runStream(userInput, sessionId = 'default', emit, selectio
       if (typeof ctx.emit === 'function') ctx.emit({ type: 'task_list', tasks, planType: 'followup', round: round + 1, timestamp: Date.now() })
       pendingFollowups = null
     } else {
-      emitLog(ctx.emit, '任务计划开始', { task: ctx.taskCtx, round: round + 1 })
       await planAndInitTasks(ctx, baseMessages)
-      emitLog(ctx.emit, '任务计划完成', { task: ctx.taskCtx, round: round + 1 })
     }
     const batchResults = await runAllTasks(ctx, baseMessages, injectedMemoryKeys)
     for (const r of batchResults) allResults.push(r)
