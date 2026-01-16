@@ -39,10 +39,31 @@ function mergeMemories(target, list) {
   return next
 }
 
-function upsertTaskIntoMessage(messages, msgIndex, task) {
+function findTasksBlock(message) {
+  const content = Array.isArray(message?.content) ? message.content : []
+  for (let i = content.length - 1; i >= 0; i--) {
+    if (content[i]?.type === 'tasks') return content[i]
+  }
+  return null
+}
+
+function ensureTasksBlock(messages, msgIndex) {
   const m = messages.value?.[msgIndex]
-  if (!m || !task) return
-  const existing = Array.isArray(m.tasks) ? [...m.tasks] : []
+  if (!m) return null
+  let block = findTasksBlock(m)
+  if (!block) {
+    const arr = Array.isArray(m.content) ? m.content : []
+    block = { type: 'tasks', tasks: [], timestamp: Date.now() }
+    arr.push(block)
+    m.content = arr
+  }
+  return block
+}
+
+function upsertTaskIntoMessage(messages, msgIndex, task) {
+  const block = ensureTasksBlock(messages, msgIndex)
+  if (!block || !task) return
+  const existing = Array.isArray(block.tasks) ? [...block.tasks] : []
   const key = taskKey(task)
   const idx = existing.findIndex((x) => taskKey(x) === key)
   const prev = idx >= 0 ? existing[idx] : null
@@ -59,13 +80,13 @@ function upsertTaskIntoMessage(messages, msgIndex, task) {
   if (idx >= 0) existing[idx] = { ...existing[idx], ...item }
   else existing.push(item)
   existing.sort((a, b) => Number(a.index) - Number(b.index))
-  m.tasks = existing
+  block.tasks = existing
 }
 
 function ensureTaskInMessage(messages, msgIndex, taskCtx) {
-  const m = messages.value?.[msgIndex]
-  if (!m) return null
-  const list = Array.isArray(m.tasks) ? [...m.tasks] : []
+  const block = ensureTasksBlock(messages, msgIndex)
+  if (!block) return null
+  const list = Array.isArray(block.tasks) ? [...block.tasks] : []
   const id = String(taskCtx?.id || '').trim()
   const index = Number(taskCtx?.index)
   let idx = -1
@@ -83,25 +104,14 @@ function ensureTaskInMessage(messages, msgIndex, taskCtx) {
       memories: [],
     })
     list.sort((a, b) => Number(a.index) - Number(b.index))
-    m.tasks = list
+    block.tasks = list
     return list.find((t) => (id ? String(t?.id || '') === id : Number(t?.index) === index)) || null
   }
   const t = list[idx]
   if (!Array.isArray(t.toolEvents)) t.toolEvents = []
   if (!Array.isArray(t.memories)) t.memories = []
-  m.tasks = list
+  block.tasks = list
   return t
-}
-
-function ensureTasksPart(messages, msgIndex) {
-  const m = messages.value?.[msgIndex]
-  if (!m) return
-  const arr = Array.isArray(m.content) ? m.content : []
-  if (!m.__tasks_part_added) {
-    arr.push({ type: 'tasks', timestamp: Date.now() })
-    m.content = arr
-    m.__tasks_part_added = true
-  }
 }
 
 function applyUsage(tokenLast, tokenTotal, u) {
@@ -313,13 +323,10 @@ export function useAgentStream(opts = {}) {
           } else if (data.type === 'llm_usage') {
             applyUsage(tokenLast, tokenTotal, data.usage)
           } else if (data.type === 'task_list') {
-            const m = messages.value[idx]
-            if (m) {
-              m.tasks = normalizeTasks(data.tasks || [])
-              ensureTasksPart(messages, idx)
-            }
+            const arr = Array.isArray(messages.value[idx].content) ? messages.value[idx].content : []
+            arr.push({ type: 'tasks', tasks: normalizeTasks(data.tasks || []), timestamp: Date.now() })
+            messages.value[idx].content = arr
           } else if (data.type === 'task_update') {
-            ensureTasksPart(messages, idx)
             upsertTaskIntoMessage(messages, idx, data.task)
           } else if (data.type === 'debug_log') {
             if (data.log) {

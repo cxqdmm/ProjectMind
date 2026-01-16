@@ -12,7 +12,7 @@
       <template v-for="(part, pi) in message.content" :key="pi">
         <div v-if="part?.type === 'text' && message.role === 'assistant'" class="md" v-html="renderMarkdown(String(part?.text || ''))"></div>
         <pre v-else-if="part?.type === 'text'">{{ String(part?.text || '') }}</pre>
-        <TaskTimeline v-else-if="part?.type === 'tasks' && message.role === 'assistant'" :tasks="message.tasks" :messageIndex="index" :isOpen="isOpen" :toggle="toggle" :renderMarkdown="renderMarkdown" />
+        <TaskTimeline v-else-if="part?.type === 'tasks' && message.role === 'assistant'" :tasks="part.tasks" :messageIndex="index" :isOpen="isOpen" :toggle="toggle" :renderMarkdown="renderMarkdown" />
         <ToolTimeline v-else-if="part?.type === 'tool_calls'" :message="message" :part="part" :isOpen="isOpen" :toggle="toggle" :renderMarkdown="renderMarkdown" />
         <MemoryUsedList v-else-if="part?.type === 'memory_used'" :memories="part.memories || []" />
       </template>
